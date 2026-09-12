@@ -24,10 +24,14 @@
 static bool found_swiss = false;
 
 void emu_update_boot() {
+#ifdef DOLPHIN_PREVIEW
+    found_swiss = true;
+#else
     dvd_custom_open_flash("/swiss-gc.dol", FILE_ENTRY_TYPE_FILE, 0);
     file_status_t* status = dvd_custom_status();
     found_swiss = (status != NULL && status->result == 0);
     dvd_custom_close(status->fd);
+#endif
 }
 
 bool emu_can_boot(gm_file_type_t type) {
@@ -165,19 +169,25 @@ extern void __SYS_ReadROM(void* buf, u32 len, u32 offset);
 static u32 bs2_size = IPL_SIZE - BS2_CODE_OFFSET;
 static u8 *bs2 = (u8*)(BS2_BASE_ADDR);
 
-void ensure_ipl_loaded(uint8_t* bios_buffer) {
+void ensure_ipl_loaded(uint8_t* bios_buffer, bool is_running_dolphin) {
     ipl_metadata_t* metadata = (void*)0x81500000 - sizeof(ipl_metadata_t);
     if (metadata->magic == 0xC0DE)
         return;
 
     memset(metadata, 0, sizeof(ipl_metadata_t));
 
-    const char* bios_path = "/ipl.bin";
-    if (get_file_size(bios_path) != IPL_SIZE || load_file_buffer(bios_path, bios_buffer)) {
-        __SYS_ReadROM(bios_buffer, IPL_SIZE, 0);
+    if (is_running_dolphin) {
+        // Dolphin exposes the boot ROM through __SYS_ReadROM already decoded.
+        // Reading it through bios_buffer and descrambling it again corrupts BS2.
+        __SYS_ReadROM(bs2, bs2_size, BS2_CODE_OFFSET);
+    } else {
+        char bios_path[] = "/ipl.bin";
+        if (get_file_size(bios_path) != IPL_SIZE || load_file_buffer(bios_path, bios_buffer)) {
+            __SYS_ReadROM(bios_buffer, IPL_SIZE, 0);
+        }
+        Descrambler(bios_buffer + DECRYPT_START, IPL_ROM_FONT_SJIS - DECRYPT_START);
+        memcpy(bs2, bios_buffer + BS2_CODE_OFFSET, bs2_size);
     }
-    Descrambler(bios_buffer + DECRYPT_START, IPL_ROM_FONT_SJIS - DECRYPT_START);
-    memcpy(bs2, bios_buffer + BS2_CODE_OFFSET, bs2_size);
 
     metadata->magic = 0xC0DE;
     
@@ -187,10 +197,10 @@ void ensure_ipl_loaded(uint8_t* bios_buffer) {
     else
         code_end_addr = *(u32*)0x8130039c;
     
-    u32 code_size = code_end_addr - 0x81300000;
-    if (code_size > IPL_SIZE)
+    u32 code_size = code_end_addr - BS2_BASE_ADDR;
+    if (code_end_addr < BS2_BASE_ADDR || code_size > bs2_size)
         code_size = 0;
-    metadata->code_size = code_end_addr - 0x81300000;
+    metadata->code_size = code_size;
 }
 
 void apply_additional_patches() {
@@ -200,6 +210,9 @@ void apply_additional_patches() {
 
     // disable exi probe for sd slot
     const char* dev = emu_get_device(); 
+    if (dev == NULL)
+        return;
+
     if (strcmp(dev, "sda") == 0) {
         u32 probe_card_0[] = { 0x8131b1c4, 0x8131b8f0, 0x8131bc88, 0x8131bca0, 0x8131c29c, 0x8131b81c, 0x8131c3dc };
         *(u32*)probe_card_0[bios_index] = 0x38600000; // li r3, 0

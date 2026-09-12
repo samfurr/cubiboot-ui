@@ -168,11 +168,15 @@ int main(int argc, char **argv) {
 
     // setup settings
     iprintf("Loading settings\n");
+#ifdef DOLPHIN_PREVIEW
+    memset(&settings, 0, sizeof(settings));
+#else
     load_settings();
 
     // fix sram
     set_sram_swiss(true);
     create_swiss_config();
+#endif
 
 //// fun stuff
 

@@ -23,7 +23,7 @@ bool bnr_cache_get(u8 game_id[6], BNR* bnr);
 void bnr_cache_put(u8 game_id[6], BNR* bnr);
 
 #else
-void ensure_ipl_loaded(uint8_t* bios_buffer);
+void ensure_ipl_loaded(uint8_t* bios_buffer, bool is_running_dolphin);
 #endif
 
 #ifdef __cplusplus

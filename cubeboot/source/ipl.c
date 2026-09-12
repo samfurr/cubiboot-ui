@@ -187,8 +187,8 @@ void load_ipl(bool is_running_dolphin) {
 
     ARAMFetch((void*)BS2_BASE_ADDR, (void*)0xe00000, 0x200000);
 
-    extern void ensure_ipl_loaded(uint8_t* bios_buffer);
-    ensure_ipl_loaded(bios_buffer);
+    extern void ensure_ipl_loaded(uint8_t* bios_buffer, bool is_running_dolphin);
+    ensure_ipl_loaded(bios_buffer, is_running_dolphin);
 
     ipl_metadata_t metadata = {};
     memcpy(&metadata, blob_metadata, sizeof(ipl_metadata_t));

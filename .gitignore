@@ -1,4 +1,7 @@
 .vscode
+.venv/
+.cache/
+/patches/source/emu/
 .DS_Store
 __pycache__
 build/

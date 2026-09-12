@@ -41,6 +41,10 @@ PATCHES_PATH := $(PROJDIR)/$(PATCHES)
 CFLAGS	= -O3 -Wno-unused-function -Wall $(MACHDEP) $(INCLUDE)
 CXXFLAGS	=	$(CFLAGS)
 
+ifeq ($(DOLPHIN_PREVIEW),1)
+CFLAGS += -DDOLPHIN_PREVIEW -DDOLPHIN_PRINT_ENABLE
+endif
+
 LDFLAGS	=	$(MACHDEP) -Wl,-Map,$(notdir $@).map -T $(DEVKITPPC)/powerpc-eabi/lib/ogc.ld -T $(PROJDIR)/scripts/override.ld 
 
 #---------------------------------------------------------------------------------

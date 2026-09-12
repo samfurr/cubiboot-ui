@@ -38,6 +38,10 @@ endif
 CFLAGS		= -O2 -Wall -Wno-main -ffixed-r12 -ffixed-r13 -ffunction-sections -fdata-sections -Wno-unused-function -Werror-implicit-function-declaration -DIPL_CODE $(MACHDEP) $(INCLUDE)
 CXXFLAGS	= $(CFLAGS)
 
+ifeq ($(DOLPHIN_PREVIEW),1)
+CFLAGS += -DDOLPHIN_PREVIEW -DTEST_SKIP_ANIMATION -DDOLPHIN_PRINT_ENABLE
+endif
+
 LINKER_SCRIPTS	:=
 LINKER_SCRIPTS	+= patch.ld
 LINKER_SCRIPTS	+= $(PROJDIR)/linker/link.ld

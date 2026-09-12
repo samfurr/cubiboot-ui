@@ -483,6 +483,104 @@ typedef struct {
     int num_paths;
 } gm_list_info;
 
+#ifdef DOLPHIN_PREVIEW
+typedef struct {
+    const char *name;
+    gm_file_type_t type;
+} gm_preview_entry_t;
+
+static const gm_preview_entry_t gm_preview_root[] = {
+    {"Animal Crossing.iso", GM_FILE_TYPE_GAME},
+    {"Luigi's Mansion.iso", GM_FILE_TYPE_GAME},
+    {"Mario Kart Double Dash.iso", GM_FILE_TYPE_GAME},
+    {"Paper Mario The Thousand-Year Door.iso", GM_FILE_TYPE_GAME},
+    {"Super Smash Bros. Melee.iso", GM_FILE_TYPE_GAME},
+    {"The Legend of Zelda - The Wind Waker.iso", GM_FILE_TYPE_GAME},
+    {"The Legend of Zelda - Twilight Princess.iso", GM_FILE_TYPE_GAME},
+    {"Tony Hawk's Pro Skater 4.iso", GM_FILE_TYPE_GAME},
+    {"Homebrew", GM_FILE_TYPE_DIRECTORY},
+    {"Games", GM_FILE_TYPE_DIRECTORY},
+    {"CleanRip.dol", GM_FILE_TYPE_PROGRAM},
+    {"swiss-gc.dol", GM_FILE_TYPE_PROGRAM},
+};
+
+static const gm_preview_entry_t gm_preview_nested[] = {
+    {"Action", GM_FILE_TYPE_DIRECTORY},
+    {"Arcade", GM_FILE_TYPE_DIRECTORY},
+    {"Racing", GM_FILE_TYPE_DIRECTORY},
+    {"RPG", GM_FILE_TYPE_DIRECTORY},
+    {"Adventure", GM_FILE_TYPE_DIRECTORY},
+    {"Platformers", GM_FILE_TYPE_DIRECTORY},
+    {"Puzzle", GM_FILE_TYPE_DIRECTORY},
+    {"Sports", GM_FILE_TYPE_DIRECTORY},
+    {"Utilities", GM_FILE_TYPE_DIRECTORY},
+    {"Development", GM_FILE_TYPE_DIRECTORY},
+};
+
+static u16 gm_preview_rgb5a3(u8 red, u8 green, u8 blue) {
+    return 0x8000 | ((red >> 3) << 10) | ((green >> 3) << 5) | (blue >> 3);
+}
+
+static void gm_preview_set_banner_pixel(gm_banner_buf_t *banner, int x, int y, u16 color) {
+    const int blocks_per_row = 96 / 4;
+    int block_index = ((y / 4) * blocks_per_row) + (x / 4);
+    int pixel_index = (block_index * 16) + ((y % 4) * 4) + (x % 4);
+    ((u16*)banner->data)[pixel_index] = color;
+}
+
+static bool gm_preview_load_banner(gm_file_entry_t *entry, int variant) {
+    gm_banner_buf_t *banner = gm_get_banner_buf();
+    if (banner == NULL) return false;
+
+    static const u8 accents[][3] = {
+        {0x39, 0xD9, 0xFF},
+        {0xFF, 0x5D, 0xC8},
+        {0xA4, 0x70, 0xFF},
+        {0x56, 0xE3, 0x9F},
+    };
+    const u8 *accent = accents[variant % countof(accents)];
+
+    for (int y = 0; y < 32; y++) {
+        for (int x = 0; x < 96; x++) {
+            bool border = x < 2 || x >= 94 || y < 2 || y >= 30;
+            bool center_mark = x >= 42 && x < 54 && y >= 8 && y < 24;
+            u8 shade = 20 + ((x * 34) / 95);
+            u16 color = gm_preview_rgb5a3(shade, shade / 2, shade + 18);
+            if (border) color = gm_preview_rgb5a3(accent[0], accent[1], accent[2]);
+            if (center_mark) color = gm_preview_rgb5a3(0xEE, 0xEE, 0xFF);
+            gm_preview_set_banner_pixel(banner, x, y, color);
+        }
+    }
+
+    DCFlushRange(banner->data, BNR_PIXELDATA_LEN);
+    entry->asset.banner.buf = banner;
+    entry->asset.banner.state = GM_LOAD_STATE_LOADED;
+    entry->asset.use_banner = true;
+    return true;
+}
+
+static gm_list_info gm_preview_list_files(const char *target_dir) {
+    const gm_preview_entry_t *entries = gm_preview_nested;
+    int entry_count = countof(gm_preview_nested);
+
+    if (strcmp(target_dir, "/") == 0) {
+        entries = gm_preview_root;
+        entry_count = countof(gm_preview_root);
+    }
+
+    for (int i = 0; i < entry_count; i++) {
+        gm_path_entry_t *entry = &__gm_early_path_list[i];
+        strcpy(entry->path, target_dir);
+        strcat(entry->path, entries[i].name);
+        entry->type = entries[i].type;
+        __gm_sorted_path_list[i] = entry;
+    }
+
+    OSReport("Dolphin preview: populated %d mock entries for %s\n", entry_count, target_dir);
+    return (gm_list_info){entry_count};
+}
+#endif
+
 // 1. func named gm_list_files returns {pointer to path array, number of paths}
 // 2. func named gm_check_headers returns {pointer to valid path array, number of valid paths}
 // 3. func named gm_load_assets returns {void}
@@ -704,6 +802,9 @@ void gm_check_files(int path_count) {
         if (gm_entry_count - (top_line_num * ASSETS_PER_LINE) > ASSETS_INITIAL_COUNT) {
             force_unload = true;
         }
+#ifdef DOLPHIN_PREVIEW
+        (void)force_unload;
+#endif
 
         if (!OSTryLockMutex(game_enum_mutex)) {
             OSReport("STOPPING GAME LOADING\n");
@@ -713,6 +814,25 @@ void gm_check_files(int path_count) {
 
         // Load assets and store them in the auxiliarly data RAM using DMA
         if (entry->type == GM_FILE_TYPE_GAME) {
+#ifdef DOLPHIN_PREVIEW
+            gm_file_entry_t *backing = gm_malloc(sizeof(gm_file_entry_t));
+            memset(backing, 0, sizeof(gm_file_entry_t));
+            memcpy(backing->path, entry->path, sizeof(backing->path));
+            backing->type = GM_FILE_TYPE_GAME;
+
+            char *base = strrchr(entry->path, '/');
+            strcpy(backing->desc.fullGameName, base + 1);
+            strcpy(backing->desc.fullCompany, "Nintendo");
+            strcpy(backing->desc.description, "Synthetic 96x32 GameCube banner for Dolphin layout preview");
+
+            if (!gm_preview_load_banner(backing, i)) {
+                OSReport("Failed to create preview banner %s\n", entry->path);
+            }
+            aram_offset += BNR_PIXELDATA_LEN + ICON_PIXELDATA_LEN;
+
+            gm_entry_backing[gm_entry_count] = backing;
+            gm_entry_count++;
+#else
             // OSReport("DEBUG: Game Check %d\n", i);
             // check if the banner file exists
             dolphin_game_into_t info = get_game_info(entry->path);
@@ -759,6 +879,7 @@ void gm_check_files(int path_count) {
             // set heap pointer
             gm_entry_backing[gm_entry_count] = backing;
             gm_entry_count++;
+#endif
         } else if (entry->type == GM_FILE_TYPE_PROGRAM || entry->type == GM_FILE_TYPE_DIRECTORY) {
             OSReport("Found other %s\n", entry->path); // lets do this!
 
@@ -823,6 +944,9 @@ void gm_check_files(int path_count) {
     f32 runtime = (f32)diff_usec(start_time, gettime()) / 1000.0;
     OSReport("Header check took=%f\n", runtime);
     (void)runtime;
+#ifdef DOLPHIN_PREVIEW
+    (void)aram_offset;
+#endif
 }
 
 void gm_line_load(int line_num) {
@@ -955,6 +1079,9 @@ void *gm_thread_worker(void* param) {
         return NULL;
     }
 
+#ifdef DOLPHIN_PREVIEW
+    gm_list_info list_info = gm_preview_list_files(target);
+#else
     static bool fill_cache = true;
     if (fill_cache) {
         fill_cache = false;
@@ -999,6 +1126,7 @@ void *gm_thread_worker(void* param) {
     }
 
     gm_list_info list_info = gm_list_files(target);
+#endif
     gm_setup_grid(list_info.num_paths, true);
     gm_sort_files(list_info.num_paths);
     gm_check_files(list_info.num_paths);
