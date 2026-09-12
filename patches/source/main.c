@@ -13,6 +13,7 @@
 
 #include "reloc.h"
 #include "menu.h"
+#include "ipl_input.h"
 
 #include "dolphin_arq.h"
 #include "flippy_sync.h"
@@ -359,6 +360,7 @@ __attribute_used__ void pre_thread_init() {
 }
 
 __attribute_used__ void pre_menu_init(int unk) {
+    ipl_input_init();
     menu_init(unk);
 
     // change default menu

@@ -29,4 +29,3 @@ extern int selected_slot;
 extern int top_line_num;
 
 void custom_gameselect_init();
-void update_icon_positions();

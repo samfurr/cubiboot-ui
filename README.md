@@ -3,6 +3,8 @@
 A GameCube-style game selector built on [makeo/cubiboot](https://github.com/makeo/cubiboot), itself a fork of [TeamOffBroadway's cubeboot](https://github.com/OffBroadway/cubeboot). Browse games from SD2SP2, SD Gecko, or similar SD adapters in a scrolling cube grid, with a large selected-game preview and readable banners and titles.
 
 - Four-column scrolling grid, a bobbing selected-game cube, and a stationary details panel.
+- C-stick inspection tilts the large cube in pitch/yaw and returns to its resting pose when released; the main stick and D-pad navigate the grid.
+- Warm-yellow selection corners, a short arrival gesture, gentle edge feedback, and an occasional idle nod give the native cube cabinet a little personality without moving its details panel.
 - Wide GameCube banners keep their aspect ratio; long titles wrap and fit the panel.
 - Swiss appears as **Settings**, with a gear icon, and always sorts last.
 - Original IPL background and native Back prompt.
@@ -92,7 +94,15 @@ make preview
 
 Dolphin's default keyboard controls use the arrow keys for the main stick, `X` for A, `Z` for B, `D` for Z, and Return for Start.
 
-The details panel fits titles using the IPL font's glyph widths: one line for short names, two balanced lines for longer ones, then a small size reduction and an ellipsis only when necessary. `make test` runs the host-side title-layout regression tests without launching Dolphin.
+C-stick inspection uses `I`/`K` for pitch and `J`/`L` for yaw in Dolphin's default keyboard mapping. Release the keys to recenter the large cube. The small grid cubes and details panel do not rotate.
+
+The details panel fits titles using the IPL font's glyph widths: one line for short names, two balanced lines for longer ones, then a small size reduction and an ellipsis only when necessary. It updates immediately when selection changes, while the cube animates independently.
+
+The cabinet uses a 200 ms arrival, a small 120 ms selection settle, and a single quiet nod after 11 seconds of inactivity. The nod dips five degrees over 400 ms and eases back over 800 ms, so it reads distinctly from the idle bob. C-stick input cancels decorative rotation immediately. Reaching a boundary gives one short bump and native error sound, including when reached through held navigation; holding against that edge stays quiet. Launch alignment runs during the existing transition and adds no boot delay.
+
+`make test` runs the host-side title-layout, menu-input, IPL input-hook, and menu-motion regression tests without launching Dolphin. New motion is checked at both 50 and 60 Hz; real SD access and boot behavior still require a hardware smoke test.
+
+Controller input is captured immediately after the IPL's normal `PADClamp` call, before its menu combines both sticks into D-pad presses and clears the analog axes. This reuses the existing poll and preserves native controls outside the loader. A guarded instruction-pattern match locates the hook; if it cannot be identified uniquely, the loader falls back to native navigation without C-stick inspection.
 
 ### Build for hardware
 

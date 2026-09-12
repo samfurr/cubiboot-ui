@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Older entries below are inherited cubeboot history, not current installation instructions.
 
+## Unreleased
+
+- Polished the native cube cabinet with warm-yellow selection corners, cooler violet materials, brighter unselected banners, and more left-edge breathing room.
+- Added a short selection settle/arrival gesture, one quiet idle nod after 11 seconds, and a small directional bump when navigation first reaches an edge; held input no longer repeats the edge sound.
+- Made the idle nod easier to see: a five-degree dip over 400 ms, followed by an 800 ms return, still once per idle period.
+- C-stick inspection immediately takes over decorative rotation. Launch alignment overlaps the existing transition, and the stationary title panel updates without fading on every selection.
+- Added time-based motion and boundary-feedback regression tests, including 50/60 Hz behavior and interrupted animations.
+- Capture analog input before the IPL merges the sticks into directional buttons, keeping C-stick inspection independent of grid navigation.
+- C-stick pitch/yaw inspection of the large selected-game cube, with a dead zone and smooth return to its resting pose on release.
+- Main-stick and D-pad grid navigation now has independent press/repeat handling, so C-stick movement no longer changes selection.
+- Added host-side menu-input regression tests, including simultaneous navigation/inspection, recentering, and 50/60 Hz updates.
+
 ## [v0.3.0-ui.1](https://github.com/samfurr/cubiboot-ui/releases/tag/v0.3.0-ui.1) - 2026-09-11
 
 - Added an isolated Dolphin mock-data preview for UI development.

@@ -10,6 +10,9 @@
 
 #include "usbgecko.h"
 #include "menu.h"
+#include "menu_input.h"
+#include "menu_motion.h"
+#include "ipl_input.h"
 #include "grid.h"
 #include "games.h"
 #include "gameid.h"
@@ -109,12 +112,12 @@ static position_t icons_positions[GRID_COLUMN_COUNT];
 #define HERO_ICON_FACE_SCALE 1.18f
 #define GRID_BANNER_FACE_SCALE 1.12f
 #define HERO_BANNER_FACE_SCALE 0.92f
-#define GRID_BASE_X -250.0f
+#define GRID_BASE_X -240.0f
 #define HERO_POSITION_X 152.0f
 #define HERO_POSITION_Y 62.0f
 #define HERO_POSITION_Z 4.0f
-#define GRID_ICON_OPACITY 0.55f
-#define GRID_SELECTED_GHOST_OPACITY 0.82f
+#define GRID_ICON_OPACITY 0.72f
+#define GRID_SELECTED_GHOST_OPACITY 0.92f
 #define DETAIL_PANEL_WIDTH 0x0D80
 #define DETAIL_PANEL_HEIGHT 0x0440
 #define DETAIL_PANEL_CENTER_X 0x1B90
@@ -127,13 +130,16 @@ static position_t icons_positions[GRID_COLUMN_COUNT];
 #define DETAIL_TITLE_LINE_STEP 21
 #define DETAIL_WRAPPED_COMPANY_Y 438
 
-typedef struct {
-    f32 pull_progress;
-    f32 bob_x;
-    f32 bob_y;
-} selected_mod_t;
+static menu_input_t menu_input;
+static menu_input_t fallback_feedback;
+static menu_motion_t menu_motion;
+static u64 last_input_time;
+static f32 launch_pitch, launch_yaw;
+static u16 fallback_held_navigation;
 
-static selected_mod_t selected_icon_mod;
+_Static_assert(PAD_BUTTON_LEFT == MENU_NAV_LEFT && PAD_BUTTON_RIGHT == MENU_NAV_RIGHT &&
+               PAD_BUTTON_DOWN == MENU_NAV_DOWN && PAD_BUTTON_UP == MENU_NAV_UP,
+               "menu navigation bits must match PAD button bits");
 
 // Define constants for max dimensions
 void setup_icon_positions();
@@ -209,13 +215,23 @@ static void get_display_title(gm_file_entry_t *entry, char title[TITLE_TEXT_CAPA
     }
 }
 
-__attribute_data__ u16 anim_step = 0;
-
 __attribute_data__ GXColorS10 *menu_color_icon;
 __attribute_data__ GXColorS10 *menu_color_icon_sel;
 
 __attribute_data__ GXColorS10 *menu_color_empty;
 __attribute_data__ GXColorS10 *menu_color_empty_sel;
+
+// IPL model data is shared with the stock memory-card screen. Keep our palette
+// local and bind it only for the duration of each custom model draw.
+static GXColorS10 cabinet_colors[4];
+static GXColorS10 selection_color = {220, 180, 45, 255};
+
+static GXColorS10 cabinet_color(const GXColorS10 *native) {
+    GXColorS10 color = *native;
+    color.r = color.r * 3 / 4;
+    color.g = (color.g * 3 + color.b) / 4;
+    return color;
+}
 
 __attribute_data__ model global_textured_icon = {};
 __attribute_data__ model global_empty_icon = {};
@@ -246,6 +262,11 @@ void set_textured_icon_unselected() {
 }
 
 __attribute_used__ void custom_gameselect_init() {
+    menu_input_reset(&menu_input);
+    menu_input_reset(&fallback_feedback);
+    menu_motion_reset(&menu_motion, selected_slot);
+    last_input_time = 0;
+    fallback_held_navigation = 0;
     // default banner
     *banner_pointer = (u32)&default_opening_bin[0];
     *banner_ready = 1;
@@ -280,10 +301,12 @@ __attribute_used__ void custom_gameselect_init() {
     // colors
     u32 color_num = SAVE_COLOR_PURPLE; // TODO: make a setting for this
     u32 color_index = 1 << (10 + 3 + color_num);
-    menu_color_icon = get_save_color(color_index, SAVE_ICON);
-    menu_color_icon_sel = get_save_color(color_index, SAVE_ICON_SEL);
-    menu_color_empty = get_save_color(color_index, SAVE_EMPTY);
-    menu_color_empty_sel = get_save_color(color_index, SAVE_EMPTY_SEL);
+    for (int i = 0; i < 4; i++)
+        cabinet_colors[i] = cabinet_color(get_save_color(color_index, i));
+    menu_color_icon = &cabinet_colors[SAVE_ICON];
+    menu_color_icon_sel = &cabinet_colors[SAVE_ICON_SEL];
+    menu_color_empty = &cabinet_colors[SAVE_EMPTY];
+    menu_color_empty_sel = &cabinet_colors[SAVE_EMPTY_SEL];
 
     // DUMP_COLOR(menu_color_icon);
     // DUMP_COLOR(menu_color_icon_sel);
@@ -293,12 +316,10 @@ __attribute_used__ void custom_gameselect_init() {
     // empty icon
     empty_icon->data = save_empty;
     model_init(empty_icon, 0);
-    set_empty_icon_unselected();
 
     // textured icon
     textured_icon->data = save_icon;
     model_init(textured_icon, 0);
-    set_textured_icon_unselected();
 
     // change the texture format (disc scans)
     tex_data *textured_icon_tex = &textured_icon->data->tex->dat[1];
@@ -370,16 +391,18 @@ __attribute_used__ void draw_save_icon(position_t *pos, u32 slot_num, u8 alpha, 
         }
     }
 
-    model *m = NULL;
+    model *m = has_texture ? textured_icon : empty_icon;
+    int second_material = has_texture ? 2 : 1;
+    GXColorS10 *saved_color_0 = m->data->mat[0].tev_color[0];
+    GXColorS10 *saved_color_1 = m->data->mat[second_material].tev_color[0];
+    s16 saved_alpha = m->alpha;
     if (has_texture) {
-        m = textured_icon;
         if (selected) {
             set_textured_icon_selected();
         } else {
             set_textured_icon_unselected();
         }
     } else {
-        m = empty_icon;
         if (selected) {
             set_empty_icon_selected();
         } else {
@@ -453,7 +476,41 @@ __attribute_used__ void draw_save_icon(position_t *pos, u32 slot_num, u8 alpha, 
         draw_model(m);
     }
 
-    return;
+    m->data->mat[0].tev_color[0] = saved_color_0;
+    m->data->mat[second_material].tev_color[0] = saved_color_1;
+    m->alpha = saved_alpha;
+}
+
+static void draw_selection_corners(position_t *pos, u8 alpha, f32 visibility) {
+    model *m = empty_icon;
+    GXColorS10 *saved_color_0 = m->data->mat[0].tev_color[0];
+    GXColorS10 *saved_color_1 = m->data->mat[1].tev_color[0];
+    s16 saved_alpha = m->alpha;
+    m->data->mat[0].tev_color[0] = &selection_color;
+    m->data->mat[1].tev_color[0] = &selection_color;
+    m->alpha = (u8)((f32)alpha * visibility);
+
+    // Eight little native blocks form four solid corners. Use the IPL's model
+    // renderer so we don't desynchronize its GX state with libogc's state cache.
+    for (int y = -1; y <= 1; y += 2) {
+        for (int x = -1; x <= 1; x += 2) {
+            for (int vertical = 0; vertical < 2; vertical++) {
+                Mtx marker;
+                C_MTXCopy(pos->m, marker);
+                marker[0][3] += x * (vertical ? 35.0f : 31.5f);
+                marker[1][3] += y * (vertical ? 31.5f : 35.0f);
+                guVector scale = vertical ? (guVector){0.10f, 0.25f, 0.07f} :
+                                             (guVector){0.25f, 0.10f, 0.07f};
+                set_obj_pos(m, marker, scale);
+                set_obj_cam(m, get_camera_mtx());
+                change_model(m);
+                draw_model(m);
+            }
+        }
+    }
+    m->data->mat[0].tev_color[0] = saved_color_0;
+    m->data->mat[1].tev_color[0] = saved_color_1;
+    m->alpha = saved_alpha;
 }
 
 inline u16 get_border_index() {
@@ -517,7 +574,7 @@ __attribute_used__ void draw_info_box(u16 width, u16 height, u16 center_x, u16 c
 	int inside_x = box->center_x - (box->inside_width / 2);
 	int inside_y = box->center_y - (box->inside_height / 2);
 
-    GXColor box_color = {0x60, 0xF0, 0xFF, alpha};
+    GXColor box_color = {0xA0, 0x8C, 0xD0, alpha};
 	draw_box(0, &blob.group, &box_color, inside_x, inside_y, box->inside_width, box->inside_height);
 
     return;
@@ -549,32 +606,6 @@ void setup_icon_positions() {
         pos->m[2][3] = 1.0;
     }
 }
-
-__attribute_used__ void update_icon_positions() {
-    static int animated_slot = -1;
-    static f32 pull_progress = 1.0f;
-
-    if (animated_slot != selected_slot) {
-        animated_slot = selected_slot;
-        pull_progress = 0.0f;
-    }
-
-    if (pull_progress < 1.0f) {
-        pull_progress += 0.085f;
-        if (pull_progress > 1.0f) pull_progress = 1.0f;
-    }
-
-    // Ease the selected cube out of its library slot into the foreground.
-    f32 pull_remaining = 1.0f - pull_progress;
-    selected_icon_mod.pull_progress = 1.0f - (pull_remaining * pull_remaining * pull_remaining);
-
-    f32 bob_scale = 0.46f;
-    selected_icon_mod.bob_x = fast_sin(35 * anim_step - 0x4000) * 5.0f * bob_scale;
-    selected_icon_mod.bob_y = fast_sin(70 * anim_step) * 3.0f * bob_scale;
-
-    anim_step += 0x7; // why is this the const?
-}
-
 
 __attribute_data__ Mtx global_gameselect_matrix;
 __attribute_data__ Mtx global_gameselect_inverse;
@@ -609,7 +640,7 @@ __attribute_used__ void custom_gameselect_menu(u8 broken_alpha_0, u8 alpha_1, u8
                     int slot_num = (line_num * GRID_COLUMN_COUNT) + col;
 
                     // bool has_texture = (slot_num < game_backing_count);
-                    bool selected = (slot_num == selected_slot);
+                    bool selected = slot_num == selected_slot && slot_num < game_backing_count;
                     bool hero = selected && pass == 1;
 
                     if (!selected && pass == 1) continue;
@@ -620,27 +651,37 @@ __attribute_used__ void custom_gameselect_menu(u8 broken_alpha_0, u8 alpha_1, u8
                     // modify
                     pos->opacity = line_visibility;
                     if (hero) {
-                        f32 pull = selected_icon_mod.pull_progress;
+                        f32 pull = menu_motion.pull;
                         pos->scale = GRID_ICON_SCALE + ((HERO_ICON_SCALE - GRID_ICON_SCALE) * pull);
 
-                        // The zoomed cube eases into a stable GameCube-menu pose,
-                        // then floats independently above the stationary details.
+                        // C-stick tilt is relative to the normal IPL-style pose.
+                        // The same matrix carries the cube and its inset artwork;
+                        // the grid copy and stationary details remain untouched.
+                        f32 pitch = menu_motion.launching ? launch_pitch : menu_input.pitch + menu_motion.hero_pitch;
+                        f32 yaw = menu_motion.launching ? launch_yaw : menu_input.yaw + menu_motion.hero_yaw;
+                        f32 pose = pull * (1.0f - menu_motion.launch_blend);
                         apply_save_rot(
-                            (s32)(520.0f * pull),
-                            (s32)(-1850.0f * pull),
+                            (s32)((520.0f + pitch) * pose),
+                            (s32)((-1850.0f + yaw) * pose),
                             0,
                             pos->m
                         );
 
-                        pos->m[0][3] = saved_x + ((HERO_POSITION_X - saved_x) * pull) + (selected_icon_mod.bob_x * pull);
-                        pos->m[1][3] = real_position_y + ((HERO_POSITION_Y - real_position_y) * pull) - (selected_icon_mod.bob_y * pull);
+                        pos->m[0][3] = saved_x + ((HERO_POSITION_X - saved_x) * pull) + (menu_motion.bob_x * pose);
+                        pos->m[1][3] = real_position_y + ((HERO_POSITION_Y - real_position_y) * pull) - (menu_motion.bob_y * pose);
                         pos->m[2][3] = 1.0f + ((HERO_POSITION_Z - 1.0f) * pull);
                     } else {
-                        pos->scale = selected ? GRID_SELECTED_SCALE : GRID_ICON_SCALE;
+                        pos->scale = selected ? GRID_SELECTED_SCALE * menu_motion.selected_scale : GRID_ICON_SCALE;
                         pos->opacity *= selected ? GRID_SELECTED_GHOST_OPACITY : GRID_ICON_OPACITY;
                         pos->m[1][3] = real_position_y;
+                        if (selected) {
+                            pos->m[0][3] += menu_motion.bump_x;
+                            pos->m[1][3] += menu_motion.bump_y;
+                        }
                     }
                     draw_save_icon(pos, slot_num, alpha_1, selected);
+                    if (selected && !hero)
+                        draw_selection_corners(pos, alpha_1, line_visibility);
 
                     C_MTXIdentity(pos->m);
                     pos->m[0][3] = saved_x; // reset x
@@ -671,8 +712,7 @@ __attribute_used__ void custom_gameselect_menu(u8 broken_alpha_0, u8 alpha_1, u8
             cached_sjis = sjis;
             title_layout(title, sjis, DETAIL_TEXT_WIDTH, font_title_glyph_width, &title_lines);
         }
-        f32 pull = selected_icon_mod.pull_progress;
-        u8 title_alpha = (u8)((f32)ui_alpha * pull);
+        u8 title_alpha = ui_alpha; // Selection text updates immediately, without blinking.
 
         // Keep metadata in a stable native IPL panel below the hero cube. The
         // cube face stays dedicated to the game's banner artwork.
@@ -763,6 +803,8 @@ __attribute_used__ void pre_menu_alpha_setup() {
     if (*cur_menu_id == MENU_GAMESELECT_ID && *prev_menu_id == MENU_GAMESELECT_TRANSITION_ID) {
         OSReport("Resetting back to SUBMENU_GAMESELECT_LOADER\n");
         current_gameselect_state = SUBMENU_GAMESELECT_LOADER;
+        menu_input_reset(&menu_input);
+        last_input_time = 0;
 
         if (first_transition) {
             Jac_PlaySe(SOUND_MENU_ENTER);
@@ -793,7 +835,38 @@ __attribute_used__ void mod_gameselect_draw(u8 alpha_0, u8 alpha_1, u8 alpha_2) 
 }
 
 __attribute_used__ s32 handle_gameselect_inputs() {
-    update_icon_positions();
+    u64 now = gettime();
+    f32 elapsed_ms = last_input_time ? (f32)diff_usec(last_input_time, now) / 1000.0f : 16.667f;
+    last_input_time = now;
+    menu_pad_sample_t pad = ipl_input_sample();
+    bool begin_launch = false;
+    // Use the sample captured before the IPL synthesizes D-pad buttons from
+    // both sticks. pad_status->pad is NOT a raw controller sample.
+    uint16_t navigation_down = menu_input_update(
+        &menu_input, pad.buttons, pad.main_x, pad.main_y, pad.c_x, pad.c_y,
+        pad.connected &&
+            current_gameselect_state == SUBMENU_GAMESELECT_LOADER && !in_submenu_transition,
+        elapsed_ms);
+    // An unfamiliar IPL must remain navigable even if capture cannot install.
+    if (!ipl_input_available()) {
+        u16 native = pad_status->analog_down;
+        navigation_down = ((native & ANALOG_LEFT) ? MENU_NAV_LEFT : 0) |
+                          ((native & ANALOG_RIGHT) ? MENU_NAV_RIGHT : 0) |
+                          ((native & ANALOG_DOWN) ? MENU_NAV_DOWN : 0) |
+                          ((native & ANALOG_UP) ? MENU_NAV_UP : 0);
+        u16 released = pad_status->analog_up;
+        fallback_held_navigation &= ~(((released & ANALOG_LEFT) ? MENU_NAV_LEFT : 0) |
+                                     ((released & ANALOG_RIGHT) ? MENU_NAV_RIGHT : 0) |
+                                     ((released & ANALOG_DOWN) ? MENU_NAV_DOWN : 0) |
+                                     ((released & ANALOG_UP) ? MENU_NAV_UP : 0));
+        fallback_held_navigation |= navigation_down;
+        if (current_gameselect_state != SUBMENU_GAMESELECT_LOADER || in_submenu_transition) {
+            navigation_down = 0;
+            menu_input_reset(&fallback_feedback);
+        }
+        fallback_feedback.held_navigation = fallback_held_navigation;
+    }
+
     grid_update_icon_positions();
 
     // TODO: this code is so annoying haha... I should add a direction var
@@ -848,15 +921,17 @@ __attribute_used__ s32 handle_gameselect_inputs() {
         if (current_gameselect_state == SUBMENU_GAMESELECT_START && !in_submenu_transition) {
             in_submenu_transition = true;
             current_gameselect_state = SUBMENU_GAMESELECT_LOADER;
+            menu_motion_reset(&menu_motion, selected_slot);
             Jac_PlaySe(SOUND_SUBMENU_EXIT);
         } else if (!in_submenu_transition) {
             // TODO: check current path depth
             if (strcmp(game_enum_path, "/") != 0) {
                 gm_deinit_thread();
+                menu_motion_reset(&menu_motion, -1);
                 Jac_PlaySe(SOUND_MENU_EXIT);
                 gm_start_thread("..");
             } else {
-                anim_step = 0; // anim reset
+                menu_motion_reset(&menu_motion, selected_slot);
                 *banner_pointer = (u32)&default_opening_bin[0]; // banner reset
                 Jac_PlaySe(SOUND_MENU_EXIT);
                 return MENU_GAMESELECT_ID;
@@ -871,6 +946,7 @@ __attribute_used__ s32 handle_gameselect_inputs() {
                 OSReport("Selected DIR slot: %d (%p)\n", selected_slot, entry);
 
                 gm_deinit_thread();
+                menu_motion_reset(&menu_motion, -1);
                 Jac_PlaySe(SOUND_SUBMENU_ENTER);
 
                 char path[128];
@@ -879,6 +955,9 @@ __attribute_used__ s32 handle_gameselect_inputs() {
             } else {
                 in_submenu_transition = true;
                 current_gameselect_state = SUBMENU_GAMESELECT_START;
+                launch_pitch = menu_input.pitch + menu_motion.hero_pitch;
+                launch_yaw = menu_input.yaw + menu_motion.hero_yaw;
+                begin_launch = true;
 
                 Jac_PlaySe(SOUND_SUBMENU_ENTER);
                 setup_gameselect_anim();
@@ -909,10 +988,11 @@ __attribute_used__ s32 handle_gameselect_inputs() {
         *bs2start_ready = 1;
     }
 
+    u16 blocked_navigation = 0;
     if (current_gameselect_state == SUBMENU_GAMESELECT_LOADER) {
-        if (pad_status->analog_down & ANALOG_RIGHT) {
+        if (navigation_down & MENU_NAV_RIGHT) {
             if ((selected_slot % GRID_COLUMN_COUNT) == (GRID_COLUMN_COUNT - 1) || selected_slot + 1 >= game_backing_count) {
-                Jac_PlaySe(SOUND_CARD_ERROR);
+                blocked_navigation |= MENU_NAV_RIGHT;
             }
             else {
                 Jac_PlaySe(SOUND_CARD_MOVE);
@@ -920,9 +1000,9 @@ __attribute_used__ s32 handle_gameselect_inputs() {
             }
         }
 
-        if (pad_status->analog_down & ANALOG_LEFT) {
+        if (navigation_down & MENU_NAV_LEFT) {
             if ((selected_slot % GRID_COLUMN_COUNT) == 0) {
-                Jac_PlaySe(SOUND_CARD_ERROR);
+                blocked_navigation |= MENU_NAV_LEFT;
             }
             else {
                 Jac_PlaySe(SOUND_CARD_MOVE);
@@ -930,10 +1010,10 @@ __attribute_used__ s32 handle_gameselect_inputs() {
             }
         }
 
-        if (pad_status->analog_down & ANALOG_DOWN) {
+        if (navigation_down & MENU_NAV_DOWN) {
             if (selected_slot + GRID_COLUMN_COUNT >= game_backing_count) {
                 // OSReport("SKIP MOVE DOWN: top_line_num = %d\n", top_line_num);
-                Jac_PlaySe(SOUND_CARD_ERROR);
+                blocked_navigation |= MENU_NAV_DOWN;
             } else {
                 Jac_PlaySe(SOUND_CARD_MOVE);
                 line_backing_t *line_backing = &browser_lines[selected_slot / GRID_COLUMN_COUNT];
@@ -949,10 +1029,10 @@ __attribute_used__ s32 handle_gameselect_inputs() {
             }
         }
 
-        if (pad_status->analog_down & ANALOG_UP) {
+        if (navigation_down & MENU_NAV_UP) {
             if (top_line_num == 0 && (selected_slot - GRID_COLUMN_COUNT) < 0) {
                 // OSReport("SKIP MOVE UP: top_line_num = %d\n", top_line_num);
-                Jac_PlaySe(SOUND_CARD_ERROR);
+                blocked_navigation |= MENU_NAV_UP;
             } else {
                 Jac_PlaySe(SOUND_CARD_MOVE);
                 line_backing_t *line_backing = &browser_lines[selected_slot / GRID_COLUMN_COUNT];
@@ -972,6 +1052,25 @@ __attribute_used__ s32 handle_gameselect_inputs() {
         }
     }
 
+    u16 feedback = menu_input_blocked_feedback(
+        ipl_input_available() ? &menu_input : &fallback_feedback,
+        navigation_down, blocked_navigation);
+    bool visible = current_gameselect_state == SUBMENU_GAMESELECT_LOADER ||
+                   (in_submenu_transition && custom_menu_transition_alpha != 0);
+    bool activity = menu_input.user_activity || pad_status->buttons_down ||
+                    (!ipl_input_available() && fallback_held_navigation);
+    menu_motion_update(&menu_motion, elapsed_ms, selected_slot,
+                        visible && selected_slot < game_backing_count,
+                        activity, menu_input.inspecting);
+    // Resolve transient events after the selected object has been initialized,
+    // including A or a boundary press on the very first active menu frame.
+    if (begin_launch) menu_motion_launch(&menu_motion);
+    if (feedback) {
+        int x = ((feedback & MENU_NAV_RIGHT) != 0) - ((feedback & MENU_NAV_LEFT) != 0);
+        int y = ((feedback & MENU_NAV_UP) != 0) - ((feedback & MENU_NAV_DOWN) != 0);
+        menu_motion_bump(&menu_motion, x, y);
+        Jac_PlaySe(SOUND_CARD_ERROR);
+    }
     return MENU_GAMESELECT_TRANSITION_ID;
 }
 
