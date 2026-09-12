@@ -318,3 +318,11 @@ u32 GetFontCode(u16 code) {
 
     return 0;
 }
+
+// IPL font B is the ROM font's per-glyph width table. The native renderer
+// uses 24px cells and 1/16px layout units; match draw_text's -1 spacing.
+int font_title_glyph_width(unsigned short code, int size) {
+    const u8 *widths = *font_ptr_ptr_b;
+    int advance = widths[GetFontCode(code)] * size * 16 / 24 - 16;
+    return advance > 0 ? advance : 0;
+}

@@ -36,7 +36,7 @@
 #include "emu/tweaks.h"
 
 #define PRELOAD_LINE_COUNT 2
-#define ASSETS_PER_LINE 8
+#define ASSETS_PER_LINE GRID_COLUMN_COUNT
 #define ASSETS_PER_PAGE (ASSETS_PER_LINE * DRAW_TOTAL_ROWS)
 #define ASSETS_INITIAL_COUNT (ASSETS_PER_PAGE + (PRELOAD_LINE_COUNT * ASSETS_PER_LINE)) // assuming we start at the top
 #define ASSET_BUFFER_COUNT 128
@@ -61,6 +61,16 @@ static u32 gm_entry_count = 0;
 gm_file_entry_t *gm_get_game_entry(int index) {
     if (index >= gm_entry_count) return NULL;
     return gm_entry_backing[index];
+}
+
+static bool gm_is_settings_path(const char *path, gm_file_type_t type) {
+    if (type != GM_FILE_TYPE_PROGRAM) return false;
+    const char *base = strrchr(path, '/');
+    return strcasecmp(base ? base + 1 : path, "swiss-gc.dol") == 0;
+}
+
+bool gm_is_settings_entry(const gm_file_entry_t *entry) {
+    return entry != NULL && gm_is_settings_path(entry->path, entry->type);
 }
 
 __attribute_aligned_data_lowmem__ static gm_icon_buf_t gm_icon_pool[ASSET_BUFFER_COUNT] = {};
@@ -474,6 +484,11 @@ static bool check_file_hidden(const char *name) {
 int gm_cmp_path_entry(const void* ptr_a, const void* ptr_b){
     const gm_path_entry_t *obj_a = *(gm_path_entry_t**)ptr_a;
     const gm_path_entry_t *obj_b = *(gm_path_entry_t**)ptr_b;
+
+    // Settings is a utility tile: keep it after all games, folders and DOLs.
+    bool settings_a = gm_is_settings_path(obj_a->path, obj_a->type);
+    bool settings_b = gm_is_settings_path(obj_b->path, obj_b->type);
+    if (settings_a != settings_b) return settings_a ? 1 : -1;
 
     return strcasecmp(obj_a->path, obj_b->path);
 }
@@ -892,7 +907,11 @@ void gm_check_files(int path_count) {
             // get the basename
             char *base = strrchr(entry->path, '/');
             strcpy(backing->desc.fullGameName, base + 1);
-            if (entry->type == GM_FILE_TYPE_PROGRAM) {
+            if (gm_is_settings_entry(backing)) {
+                strcpy(backing->desc.gameName, "Settings");
+                strcpy(backing->desc.fullGameName, "Settings");
+                strcpy(backing->desc.description, "Swiss");
+            } else if (entry->type == GM_FILE_TYPE_PROGRAM) {
                 strcpy(backing->desc.description, "Homebrew Program");
             } else {
                 strcpy(backing->desc.description, "Directory");
@@ -1061,9 +1080,9 @@ void gm_debug_func() {
 #endif
 
 void gm_setup_grid(int line_count, bool initial) {
-    number_of_lines = (line_count + 7) >> 3;
-    if (number_of_lines < 4) {
-        number_of_lines = 4;
+    number_of_lines = (line_count + GRID_COLUMN_COUNT - 1) / GRID_COLUMN_COUNT;
+    if (number_of_lines < DRAW_TOTAL_ROWS) {
+        number_of_lines = DRAW_TOTAL_ROWS;
     }
 
     if (initial) {
@@ -1228,4 +1247,3 @@ void gm_deinit_thread() {
         OSUnlockMutex(game_enum_mutex);
     }
 }
-

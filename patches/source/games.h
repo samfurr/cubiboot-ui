@@ -114,3 +114,4 @@ void gm_start_thread(const char *target);
 void gm_line_changed(int delta);
 bool gm_can_move();
 gm_file_entry_t *gm_get_game_entry(int index);
+bool gm_is_settings_entry(const gm_file_entry_t *entry);

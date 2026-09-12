@@ -18,7 +18,9 @@
 
 #include "dir_tex_bin.h"
 #include "dol_tex_bin.h"
+#include "settings_tex_bin.h"
 #include "font.h"
+#include "title_layout.h"
 #include "boot.h"
 #include "ipl.h"
 #include "os.h"
@@ -98,15 +100,37 @@ typedef struct {
     Mtx m;
 } position_t;
 
-static position_t icons_positions[8];
+static position_t icons_positions[GRID_COLUMN_COUNT];
+
+#define GRID_ICON_SCALE 1.55f
+#define GRID_SELECTED_SCALE 1.72f
+#define HERO_ICON_SCALE 4.9f
+#define GRID_ICON_FACE_SCALE 0.84f
+#define HERO_ICON_FACE_SCALE 1.18f
+#define GRID_BANNER_FACE_SCALE 1.12f
+#define HERO_BANNER_FACE_SCALE 0.92f
+#define GRID_BASE_X -250.0f
+#define HERO_POSITION_X 152.0f
+#define HERO_POSITION_Y 62.0f
+#define HERO_POSITION_Z 4.0f
+#define GRID_ICON_OPACITY 0.55f
+#define GRID_SELECTED_GHOST_OPACITY 0.82f
+#define DETAIL_PANEL_WIDTH 0x0D80
+#define DETAIL_PANEL_HEIGHT 0x0440
+#define DETAIL_PANEL_CENTER_X 0x1B90
+#define DETAIL_PANEL_CENTER_Y 0x1300
+#define DETAIL_TITLE_X 294
+#define DETAIL_TITLE_Y 404
+#define DETAIL_COMPANY_Y 426
+#define DETAIL_TEXT_WIDTH (DETAIL_PANEL_WIDTH - 0x280)
+#define DETAIL_WRAPPED_TITLE_Y 394
+#define DETAIL_TITLE_LINE_STEP 21
+#define DETAIL_WRAPPED_COMPANY_Y 438
 
 typedef struct {
-    s32 rot_diff_x;
-    s32 rot_diff_y;
-    s32 rot_diff_z;
-
-    f32 move_diff_y;
-    f32 move_diff_z;
+    f32 pull_progress;
+    f32 bob_x;
+    f32 bob_y;
 } selected_mod_t;
 
 static selected_mod_t selected_icon_mod;
@@ -117,7 +141,7 @@ void setup_icon_positions();
 __attribute__((aligned(4))) static tex_data icon_texture;
 __attribute__((aligned(4))) static tex_data banner_texture;
 
-void draw_text(char *s, s16 size, u16 x, u16 y, GXColor *color) {
+static void draw_text_aligned(char *s, s16 size, u16 x, u16 y, u8 x_align, GXColor *color) {
     static struct {
         text_group group;
         text_metadata metadata;
@@ -159,8 +183,30 @@ void draw_text(char *s, s16 size, u16 x, u16 y, GXColor *color) {
     draw.metadata.size = draw.metadata.line_spacing = size;
     draw.metadata.x = (x + 64) * 20;
     draw.metadata.y = (y + 64) * 10;
+    draw.metadata.x_align = x_align;
 
     gx_draw_text(0, &text.group, &draw.group, color);
+}
+
+void draw_text(char *s, s16 size, u16 x, u16 y, GXColor *color) {
+    draw_text_aligned(s, size, x, y, TEXT_ALIGN_TOP, color);
+}
+
+static void draw_text_centered(char *s, s16 size, u16 x, u16 y, GXColor *color) {
+    draw_text_aligned(s, size, x, y, TEXT_ALIGN_CENTER, color);
+}
+
+static void get_display_title(gm_file_entry_t *entry, char title[TITLE_TEXT_CAPACITY]) {
+    bool sjis = entry->extra.game_id[3] == 'J';
+    if (entry->desc.fullGameName[0]) {
+        title_copy_text(title, entry->desc.fullGameName, sizeof(entry->desc.fullGameName), sjis);
+    } else if (entry->desc.gameName[0]) {
+        title_copy_text(title, entry->desc.gameName, sizeof(entry->desc.gameName), sjis);
+    } else {
+        const char *base = strrchr(entry->path, '/');
+        const char *source = base ? base + 1 : entry->path;
+        title_copy_text(title, source, sizeof(entry->path) - (source - entry->path), sjis);
+    }
 }
 
 __attribute_data__ u16 anim_step = 0;
@@ -310,7 +356,7 @@ int top_line_num = 0;
 
 __attribute_used__ void draw_save_icon(position_t *pos, u32 slot_num, u8 alpha, bool selected) {
     f32 sc = pos->scale;
-    guVector scale = {sc, sc, sc};
+    guVector cube_scale = {sc, sc, sc};
     bool has_texture = false;
 
     gm_file_entry_t *entry = gm_get_game_entry(slot_num);
@@ -342,7 +388,7 @@ __attribute_used__ void draw_save_icon(position_t *pos, u32 slot_num, u8 alpha, 
     }
 
     // setup camera
-    set_obj_pos(m, pos->m, scale);
+    set_obj_pos(m, pos->m, cube_scale);
     set_obj_cam(m, get_camera_mtx());
     change_model(m);
 
@@ -355,10 +401,13 @@ __attribute_used__ void draw_save_icon(position_t *pos, u32 slot_num, u8 alpha, 
 
         // icon
         tex_data *icon_tex = &m->data->tex->dat[1];
-        if (entry->type == GM_FILE_TYPE_PROGRAM || entry->type == GM_FILE_TYPE_DIRECTORY || entry->asset.icon.state != GM_LOAD_STATE_NONE) {
+        bool uses_square_icon = entry->type == GM_FILE_TYPE_PROGRAM || entry->type == GM_FILE_TYPE_DIRECTORY || entry->asset.icon.state != GM_LOAD_STATE_NONE;
+        if (uses_square_icon) {
             u32 target_texture_data = 0;
+            bool settings_icon = gm_is_settings_entry(entry);
             if (entry->asset.icon.state == GM_LOAD_STATE_NONE) {
                 const uint8_t *default_icon = entry->type == GM_FILE_TYPE_DIRECTORY ? &dir_tex_bin[0] : &dol_tex_bin[0];
+                if (settings_icon) default_icon = &settings_tex_bin[0];
                 target_texture_data = (u32)default_icon;
             } else {
                 target_texture_data = (u32)entry->asset.icon.buf->data;
@@ -367,8 +416,8 @@ __attribute_used__ void draw_save_icon(position_t *pos, u32 slot_num, u8 alpha, 
             s32 desired_offset = (s32)((u32)target_texture_data - (u32)icon_tex);
             icon_tex->offset = desired_offset;
             icon_tex->format = GX_TF_RGB5A3;
-            icon_tex->width = 32;
-            icon_tex->height = 32;
+            icon_tex->width = settings_icon && entry->asset.icon.state == GM_LOAD_STATE_NONE ? 64 : 32;
+            icon_tex->height = icon_tex->width;
         } else {
             u16 *source_texture_data = (u16*)entry->asset.banner.buf->data;
             u32 target_texture_data = (u32)source_texture_data;
@@ -379,6 +428,24 @@ __attribute_used__ void draw_save_icon(position_t *pos, u32 slot_num, u8 alpha, 
             icon_tex->width = 96;
             icon_tex->height = 32;
         }
+
+        // Keep artwork inset within the cube face. GameCube banners are 96x32,
+        // so flatten only their face geometry to preserve the native 3:1 ratio.
+        // Give small banners more face area for legibility, then ease toward
+        // roomier padding on the hero cube. Square utility icons stay unchanged.
+        f32 face_inset = uses_square_icon ? GRID_ICON_FACE_SCALE : GRID_BANNER_FACE_SCALE;
+        f32 hero_face_inset = uses_square_icon ? HERO_ICON_FACE_SCALE : HERO_BANNER_FACE_SCALE;
+        if (sc > GRID_SELECTED_SCALE) {
+            f32 hero_mix = (sc - GRID_SELECTED_SCALE) / (HERO_ICON_SCALE - GRID_SELECTED_SCALE);
+            if (hero_mix > 1.0f) hero_mix = 1.0f;
+            face_inset += (hero_face_inset - face_inset) * hero_mix;
+        }
+        f32 face_width = sc * face_inset;
+        f32 face_height = uses_square_icon ? face_width : face_width / 3.0f;
+        guVector face_scale = {face_width, face_height, sc};
+        set_obj_pos(m, pos->m, face_scale);
+        set_obj_cam(m, get_camera_mtx());
+        change_model(m);
 
         // TODO: instead set m->data->mat[1].texmap_index[0] = 0xFFFF
         draw_partial(m, &m->data->parts[6]);
@@ -450,7 +517,7 @@ __attribute_used__ void draw_info_box(u16 width, u16 height, u16 center_x, u16 c
 	int inside_x = box->center_x - (box->inside_width / 2);
 	int inside_y = box->center_y - (box->inside_height / 2);
 
-    GXColor box_color = {255, 255, 255, alpha};
+    GXColor box_color = {0x60, 0xF0, 0xFF, alpha};
 	draw_box(0, &blob.group, &box_color, inside_x, inside_y, box->inside_width, box->inside_height);
 
     return;
@@ -469,22 +536,12 @@ void patch_anim_draw() {
 // #define WITH_SPACE 1
 
 void setup_icon_positions() {
-#if defined(WITH_SPACE) && WITH_SPACE
-    const int base_x = -208;
-#else
-    const int base_x = -196;
-#endif
-
-    for (int col = 0; col < 8; col++) {
+    for (int col = 0; col < GRID_COLUMN_COUNT; col++) {
         position_t *pos = &icons_positions[col];
-        pos->scale = 1.3;
+        pos->scale = GRID_ICON_SCALE;
         pos->opacity = 1.0;
 
-
-        f32 pos_x = base_x + (col * DRAW_OFFSET_Y);
-#if defined(WITH_SPACE) && WITH_SPACE
-        if (col >= 4) pos_x += 24; // card spacing
-#endif
+        f32 pos_x = GRID_BASE_X + (col * DRAW_OFFSET_X);
 
         C_MTXIdentity(pos->m);
         pos->m[0][3] = pos_x;
@@ -494,13 +551,26 @@ void setup_icon_positions() {
 }
 
 __attribute_used__ void update_icon_positions() {
-    f32 mult = 0.7; // 1.0 is more accurate
-    selected_icon_mod.rot_diff_x = fast_cos(anim_step * 70) * 350 * mult;
-    selected_icon_mod.rot_diff_y = fast_cos(anim_step * 35 - 15000) * 1000 * mult;
-    selected_icon_mod.rot_diff_z = fast_cos(anim_step * 35) * 1000 * mult;
+    static int animated_slot = -1;
+    static f32 pull_progress = 1.0f;
 
-    selected_icon_mod.move_diff_y = fast_sin(35 * anim_step - 0x4000) * 10.0 * mult;
-    selected_icon_mod.move_diff_z = fast_sin(70 * anim_step) * 5.0 * mult;
+    if (animated_slot != selected_slot) {
+        animated_slot = selected_slot;
+        pull_progress = 0.0f;
+    }
+
+    if (pull_progress < 1.0f) {
+        pull_progress += 0.085f;
+        if (pull_progress > 1.0f) pull_progress = 1.0f;
+    }
+
+    // Ease the selected cube out of its library slot into the foreground.
+    f32 pull_remaining = 1.0f - pull_progress;
+    selected_icon_mod.pull_progress = 1.0f - (pull_remaining * pull_remaining * pull_remaining);
+
+    f32 bob_scale = 0.46f;
+    selected_icon_mod.bob_x = fast_sin(35 * anim_step - 0x4000) * 5.0f * bob_scale;
+    selected_icon_mod.bob_y = fast_sin(70 * anim_step) * 3.0f * bob_scale;
 
     anim_step += 0x7; // why is this the const?
 }
@@ -520,48 +590,54 @@ void fix_gameselect_view() {
 }
 
 __attribute_data__ u32 current_gameselect_state = SUBMENU_GAMESELECT_LOADER;
+
 __attribute_used__ void custom_gameselect_menu(u8 broken_alpha_0, u8 alpha_1, u8 broken_alpha_2) {
     // color
     u8 ui_alpha = alpha_1;
     // u8 ui_alpha = alpha_2; // correct with animation
-    GXColor white = {0xFF, 0xFF, 0xFF, ui_alpha};
-
-    // text
-    draw_text("cubiboot loader", 20, 20, 4, &white);
-    draw_text("Load Disc (Z)", 20, 320, 4, &white);
 
     // icons
     for (int pass = 0; pass < 2; pass++) {
         for (int line_num = 0; line_num < number_of_lines; line_num++) {
             line_backing_t *line_backing = &browser_lines[line_num];
+            f32 line_visibility = line_backing->transparency;
 
-            if (line_backing->transparency > 0 && line_backing->raw_position_y >= 0 && line_backing->raw_position_y < SCREEN_BOUND_TOTAL_Y) {
+            if (line_visibility > 0 && line_backing->raw_position_y >= 0 && line_backing->raw_position_y < SCREEN_BOUND_TOTAL_Y) {
                 f32 real_position_y = SCREEN_BOUND_TOP - line_backing->raw_position_y;
                 // OSReport("line %d: %f\n", line_num, real_position_y);
-                for (int col = 0; col < 8; col++) {
-                    int slot_num = (line_num * 8) + col;
+                for (int col = 0; col < GRID_COLUMN_COUNT; col++) {
+                    int slot_num = (line_num * GRID_COLUMN_COUNT) + col;
 
                     // bool has_texture = (slot_num < game_backing_count);
                     bool selected = (slot_num == selected_slot);
+                    bool hero = selected && pass == 1;
 
-                    if (selected && pass == 0) continue; // skip selected icon on first pass
-                    if (!selected && pass == 1) continue; // skip unselected icons on second pass
+                    if (!selected && pass == 1) continue;
 
                     position_t *pos = &icons_positions[col];
                     f32 saved_x = pos->m[0][3];
 
                     // modify
-                    pos->opacity = line_backing->transparency;
-                    if (selected) {
-                        pos->scale = 2.0;
+                    pos->opacity = line_visibility;
+                    if (hero) {
+                        f32 pull = selected_icon_mod.pull_progress;
+                        pos->scale = GRID_ICON_SCALE + ((HERO_ICON_SCALE - GRID_ICON_SCALE) * pull);
 
-                        apply_save_rot(selected_icon_mod.rot_diff_x, selected_icon_mod.rot_diff_y, selected_icon_mod.rot_diff_z, pos->m);
+                        // The zoomed cube eases into a stable GameCube-menu pose,
+                        // then floats independently above the stationary details.
+                        apply_save_rot(
+                            (s32)(520.0f * pull),
+                            (s32)(-1850.0f * pull),
+                            0,
+                            pos->m
+                        );
 
-                        pos->m[0][3] = saved_x + selected_icon_mod.move_diff_y;
-                        pos->m[1][3] = real_position_y - selected_icon_mod.move_diff_z;
-                        pos->m[2][3] = 2.0;
+                        pos->m[0][3] = saved_x + ((HERO_POSITION_X - saved_x) * pull) + (selected_icon_mod.bob_x * pull);
+                        pos->m[1][3] = real_position_y + ((HERO_POSITION_Y - real_position_y) * pull) - (selected_icon_mod.bob_y * pull);
+                        pos->m[2][3] = 1.0f + ((HERO_POSITION_Z - 1.0f) * pull);
                     } else {
-                        pos->scale = 1.3;
+                        pos->scale = selected ? GRID_SELECTED_SCALE : GRID_ICON_SCALE;
+                        pos->opacity *= selected ? GRID_SELECTED_GHOST_OPACITY : GRID_ICON_OPACITY;
                         pos->m[1][3] = real_position_y;
                     }
                     draw_save_icon(pos, slot_num, alpha_1, selected);
@@ -575,64 +651,55 @@ __attribute_used__ void custom_gameselect_menu(u8 broken_alpha_0, u8 alpha_1, u8
         }
     }
 
-    // arrows
+    // Restore the normal view before drawing the selected cube's face UI.
     fix_gameselect_view();
-    setup_tex_draw(1, 0, 0);
-    if (top_line_num > 0) {
-        draw_named_tex(make_type('a','r','a','u'), menu_blob, &white, 0x800 - 80, 0); // TODO: y pos anim
-    }
-    if (number_of_lines > DRAW_TOTAL_ROWS && top_line_num < (number_of_lines - DRAW_TOTAL_ROWS)) {
-        draw_named_tex(make_type('a','r','a','d'), menu_blob, &white, 0x800 - 80, 0); // TODO: y pos anim
-    }
-
-    // box
-    GXColor top_color = {0x6e, 0x00, 0xb3, 0xc8};
-    GXColor bottom_color = {0x80, 0x00, 0x57, 0xb4};
-    draw_info_box(0x20f0, 0x560, 0x1230, 0x1640, ui_alpha, &top_color, &bottom_color);
 
     gm_file_entry_t *entry = gm_get_game_entry(selected_slot);
     if (entry != NULL && selected_slot < game_backing_count) {
         if (entry->extra.game_id[3] == 'J') switch_lang_jpn();
         else switch_lang_eng();
 
-        // info
-        draw_blob_text(make_type('t','i','t','l'), menu_blob, &white, entry->desc.fullGameName, 0x1f);
-        draw_blob_text(make_type('i','n','f','o'), menu_blob, &white, entry->desc.description, 0x1f);
+        char title[TITLE_TEXT_CAPACITY];
+        get_display_title(entry, title);
+        // Refit only when selection/metadata changes, not on every bob frame.
+        static char cached_title[TITLE_TEXT_CAPACITY];
+        static bool cached_sjis;
+        static title_layout_t title_lines;
+        bool sjis = entry->extra.game_id[3] == 'J';
+        if (!title_lines.size || cached_sjis != sjis || strcmp(cached_title, title) != 0) {
+            strcpy(cached_title, title);
+            cached_sjis = sjis;
+            title_layout(title, sjis, DETAIL_TEXT_WIDTH, font_title_glyph_width, &title_lines);
+        }
+        f32 pull = selected_icon_mod.pull_progress;
+        u8 title_alpha = (u8)((f32)ui_alpha * pull);
 
-        switch_lang_eng();
-        if (entry->type == GM_FILE_TYPE_PROGRAM || entry->type == GM_FILE_TYPE_DIRECTORY) {
-            // game source
-            switch_lang_eng();
-            draw_blob_border(make_type('f','r','m','c'), menu_blob, &white);
+        // Keep metadata in a stable native IPL panel below the hero cube. The
+        // cube face stays dedicated to the game's banner artwork.
+        GXColor screen_top = {0x18, 0x02, 0x2C, 0xE0};
+        GXColor screen_bottom = {0x08, 0x00, 0x16, 0xE0};
+        draw_info_box(
+            DETAIL_PANEL_WIDTH,
+            DETAIL_PANEL_HEIGHT,
+            DETAIL_PANEL_CENTER_X,
+            DETAIL_PANEL_CENTER_Y,
+            title_alpha,
+            &screen_top,
+            &screen_bottom
+        );
 
-            char *type_text = entry->type == GM_FILE_TYPE_DIRECTORY ? "DIR" : "DOL";
-            draw_text(type_text, 20, 125, 540, &white);
+        prep_text_mode();
+        GXColor title_color = {0xF0, 0xEC, 0xFF, title_alpha};
+        int title_y = title_lines.line_count == 1 ? DETAIL_TITLE_Y : DETAIL_WRAPPED_TITLE_Y;
+        for (int i = 0; i < title_lines.line_count; i++) {
+            draw_text_centered(title_lines.lines[i], title_lines.size, DETAIL_TITLE_X,
+                               title_y + i * DETAIL_TITLE_LINE_STEP, &title_color);
+        }
 
-            const uint8_t *default_icon = entry->type == GM_FILE_TYPE_DIRECTORY ? &dir_tex_bin[0] : &dol_tex_bin[0];
-            if (entry->asset.icon.state == GM_LOAD_STATE_NONE) {
-                // icon image
-                setup_tex_draw(1, 0, 1);
-                icon_texture.offset = (s32)((u32)default_icon - (u32)&icon_texture);
-                draw_blob_tex(make_type('i','c','0','0'), menu_blob, &white, &icon_texture);
-            } else if (entry->asset.icon.state == GM_LOAD_STATE_LOADED) {
-                // icon image
-                setup_tex_draw(1, 0, 1);
-                // TODO: handle format changes for compressed icons
-                icon_texture.offset = (s32)((u32)entry->asset.icon.buf->data - (u32)&icon_texture);
-                draw_blob_tex(make_type('i','c','0','0'), menu_blob, &white, &icon_texture);
-            }
-        } else if (entry->type == GM_FILE_TYPE_GAME) {
-            // game source
-            switch_lang_eng();
-            draw_blob_border(make_type('f','r','m','c'), menu_blob, &white);
-            draw_text("ISO", 20, 125, 540, &white);
-
-            if (entry->asset.banner.state == GM_LOAD_STATE_LOADED) {
-                // banner image
-                setup_tex_draw(1, 0, 1);
-                banner_texture.offset = (s32)((u32)(entry->asset.banner.buf->data) - (u32)&banner_texture);
-                draw_blob_tex(make_type('b','a','n','a'), menu_blob, &white, &banner_texture);
-            }
+        if (entry->type == GM_FILE_TYPE_GAME && entry->desc.fullCompany[0]) {
+            GXColor company_color = {0xB8, 0xA9, 0xD0, title_alpha};
+            int company_y = title_lines.line_count == 1 ? DETAIL_COMPANY_Y : DETAIL_WRAPPED_COMPANY_Y;
+            draw_text_centered(entry->desc.fullCompany, 13, DETAIL_TITLE_X, company_y, &company_color);
         }
         switch_lang_orig();
     }
@@ -707,6 +774,8 @@ __attribute_used__ void pre_menu_alpha_setup() {
 __attribute_used__ void mod_gameselect_draw(u8 alpha_0, u8 alpha_1, u8 alpha_2) {
     // this is for the camera
     setup_gameselect_menu(0, 0, 0);
+
+    // Use the stock IPL background treatment and animation.
     draw_grid(global_gameselect_matrix, alpha_1);
 
     // TODO: use GXColor instead of alpha byte
@@ -824,10 +893,6 @@ __attribute_used__ s32 handle_gameselect_inputs() {
         }
     }
 
-    // if (pad_status->buttons_down & PAD_BUTTON_START && current_gameselect_state == SUBMENU_GAMESELECT_LOADER) {
-    //     ...
-    // }
-
     if (pad_status->buttons_down & PAD_BUTTON_START && current_gameselect_state == SUBMENU_GAMESELECT_START) {
         Jac_StopSoundAll();
         Jac_PlaySe(SOUND_MENU_FINAL);
@@ -846,7 +911,7 @@ __attribute_used__ s32 handle_gameselect_inputs() {
 
     if (current_gameselect_state == SUBMENU_GAMESELECT_LOADER) {
         if (pad_status->analog_down & ANALOG_RIGHT) {
-            if ((selected_slot % 8) == (8 - 1)) {
+            if ((selected_slot % GRID_COLUMN_COUNT) == (GRID_COLUMN_COUNT - 1) || selected_slot + 1 >= game_backing_count) {
                 Jac_PlaySe(SOUND_CARD_ERROR);
             }
             else {
@@ -856,7 +921,7 @@ __attribute_used__ s32 handle_gameselect_inputs() {
         }
 
         if (pad_status->analog_down & ANALOG_LEFT) {
-            if ((selected_slot % 8) == 0) {
+            if ((selected_slot % GRID_COLUMN_COUNT) == 0) {
                 Jac_PlaySe(SOUND_CARD_ERROR);
             }
             else {
@@ -866,39 +931,39 @@ __attribute_used__ s32 handle_gameselect_inputs() {
         }
 
         if (pad_status->analog_down & ANALOG_DOWN) {
-            if (number_of_lines - top_line_num == 4 && (selected_slot + 8) > (number_of_lines * 8 - 1)) {
+            if (selected_slot + GRID_COLUMN_COUNT >= game_backing_count) {
                 // OSReport("SKIP MOVE DOWN: top_line_num = %d\n", top_line_num);
                 Jac_PlaySe(SOUND_CARD_ERROR);
             } else {
                 Jac_PlaySe(SOUND_CARD_MOVE);
-                line_backing_t *line_backing = &browser_lines[selected_slot / 8];
+                line_backing_t *line_backing = &browser_lines[selected_slot / GRID_COLUMN_COUNT];
                 if (get_position_after(line_backing) >= DRAW_BOUND_BOTTOM - DRAW_OFFSET_Y - 10) {
                     if (gm_can_move() && grid_dispatch_navigate_down() == GRID_MOVE_SUCCESS) {
                         gm_line_changed(1);
-                        selected_slot += 8;
+                        selected_slot += GRID_COLUMN_COUNT;
                         top_line_num++;
                     }
                 } else {
-                    selected_slot += 8;
+                    selected_slot += GRID_COLUMN_COUNT;
                 }
             }
         }
 
         if (pad_status->analog_down & ANALOG_UP) {
-            if (top_line_num == 0 && (selected_slot - 8) < 0) {
+            if (top_line_num == 0 && (selected_slot - GRID_COLUMN_COUNT) < 0) {
                 // OSReport("SKIP MOVE UP: top_line_num = %d\n", top_line_num);
                 Jac_PlaySe(SOUND_CARD_ERROR);
             } else {
                 Jac_PlaySe(SOUND_CARD_MOVE);
-                line_backing_t *line_backing = &browser_lines[selected_slot / 8];
+                line_backing_t *line_backing = &browser_lines[selected_slot / GRID_COLUMN_COUNT];
                 if (top_line_num != 0 && get_position_after(line_backing) <= DRAW_BOUND_TOP + DRAW_OFFSET_Y - 10) {
                     if (gm_can_move() && grid_dispatch_navigate_up() == GRID_MOVE_SUCCESS) {
                         gm_line_changed(-1);
-                        selected_slot -= 8;
+                        selected_slot -= GRID_COLUMN_COUNT;
                         top_line_num--;
                     }
                 } else {
-                    selected_slot -= 8;
+                    selected_slot -= GRID_COLUMN_COUNT;
                 }
             }
             
@@ -912,7 +977,7 @@ __attribute_used__ s32 handle_gameselect_inputs() {
 
 __attribute_data__ u8 show_watermark = 1;
 void alpha_watermark(void) {
-    if (!show_watermark && !is_running_dolphin) return;
+    if (!show_watermark) return;
     prep_text_mode();
 
     GXColor yellow_alpha = {0xFF, 0xFF, 0x00, 0x80};

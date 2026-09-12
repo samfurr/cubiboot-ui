@@ -14,6 +14,8 @@ The menu can be built in a local preview mode that loads the configured GameCube
 
 Preview mode does not use or launch `swiss-gc.dol`, and it does not validate the real SD, DVD, or boot paths. Continue to test those paths on hardware before release.
 
+`swiss-gc.dol` appears in the grid as **Settings**, with a gear icon (including a mock entry in preview mode), and always sorts after the other entries. Its filename and launch behavior are unchanged; there is no separate Start shortcut in the grid. To regenerate the bundled gear texture, run `python3 scripts/generate-settings-icon.py`.
+
 ### One-time setup
 
 1. Install [Dolphin](https://dolphin-emu.org/download/) and [devkitPro pacman](https://github.com/devkitPro/pacman/releases/latest).
@@ -48,6 +50,8 @@ make preview
 `make preview-build` only builds the preview DOL, while `make preview-run` builds and launches it. The build uses `DOLPHIN_PREVIEW=1`, skips the boot animation, and creates its pinned Python helper environment under the ignored `.venv` directory.
 
 Dolphin's default keyboard controls use the arrow keys for the main stick, `X` for A, `Z` for B, `D` for Z, and Return for Start.
+
+The details panel fits titles using the IPL font's glyph widths: one line for short names, two balanced lines for longer ones, then a small size reduction and an ellipsis only when necessary. `make test` runs the host-side title-layout regression tests without launching Dolphin.
 
 Preview builds are cleaned first so their conditional objects cannot leak into a hardware build. For a production build, continue to use the CI-style clean build:
 

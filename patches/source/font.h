@@ -4,3 +4,4 @@
 void switch_lang_eng();
 void switch_lang_jpn();
 void switch_lang_orig();
+int font_title_glyph_width(unsigned short code, int size);
