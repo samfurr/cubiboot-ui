@@ -12,17 +12,17 @@ A GameCube-style game selector built on [makeo/cubiboot](https://github.com/make
 
 ## Downloads
 
-Get the [latest release](https://github.com/samfurr/cubiboot-ui/releases/latest), including checksums and build information.
+The current UI build is [v0.3.0-ui.2](https://github.com/samfurr/cubiboot-ui/releases/tag/v0.3.0-ui.2), initially a prerelease pending a real-GameCube smoke test. Its downloads below include checksums and build information. The previous hardware-tested [v0.3.0-ui.1](https://github.com/samfurr/cubiboot-ui/releases/tag/v0.3.0-ui.1) remains available for rollback.
 
 | Your installation | File | Where it goes |
 | --- | --- | --- |
-| Existing PicoLoader, with Cubiboot stored on the Pico | [`cubiboot_picoloader.uf2`](https://github.com/samfurr/cubiboot-ui/releases/latest/download/cubiboot_picoloader.uf2) | Pico USB drive in BOOTSEL mode |
-| PicoBoot or PicoLoader using gekkoboot/iplboot to load `ipl.dol` from SD | [`cubiboot.dol`](https://github.com/samfurr/cubiboot-ui/releases/latest/download/cubiboot.dol) | SD root, renamed to `ipl.dol` |
+| Existing PicoLoader, with Cubiboot stored on the Pico | [`cubiboot_picoloader.uf2`](https://github.com/samfurr/cubiboot-ui/releases/download/v0.3.0-ui.2/cubiboot_picoloader.uf2) | Pico USB drive in BOOTSEL mode |
+| PicoBoot or PicoLoader using gekkoboot/iplboot to load `ipl.dol` from SD | [`cubiboot.dol`](https://github.com/samfurr/cubiboot-ui/releases/download/v0.3.0-ui.2/cubiboot.dol) | SD root, renamed to `ipl.dol` |
 
 > [!WARNING]
 > PicoLoader and PicoBoot are different installations; their UF2 files are not interchangeable. Our UF2 is a **PicoLoader payload-only update**: it preserves existing PicoLoader firmware and will not set up a blank board. This fork does not provide a PicoBoot UF2.
 
-The maintainer has confirmed this release works on a real GameCube with PicoLoader. That is a hardware smoke test, not a compatibility guarantee for every console, SD adapter, or launch/reset path.
+The maintainer confirmed **v0.3.0-ui.1** works on a real GameCube with PicoLoader. The new **v0.3.0-ui.2** interface has been exercised in Dolphin and its input/motion logic is covered by host regression tests; its hardware validation is still pending. Neither check guarantees compatibility with every console, SD adapter, IPL revision, or launch/reset path.
 
 ### Update an existing PicoLoader
 
@@ -98,7 +98,9 @@ C-stick inspection uses `I`/`K` for pitch and `J`/`L` for yaw in Dolphin's defau
 
 The details panel fits titles using the IPL font's glyph widths: one line for short names, two balanced lines for longer ones, then a small size reduction and an ellipsis only when necessary. It updates immediately when selection changes, while the cube animates independently.
 
-The cabinet uses a 200 ms arrival, a small 120 ms selection settle, and a single quiet nod after 11 seconds of inactivity. The nod dips five degrees over 400 ms and eases back over 800 ms, so it reads distinctly from the idle bob. C-stick input cancels decorative rotation immediately. Reaching a boundary gives one short bump and native error sound, including when reached through held navigation; holding against that edge stays quiet. Launch alignment runs during the existing transition and adds no boot delay.
+The large preview stays in place while browsing: selection changes its artwork immediately, without sending another cube across the screen or inheriting a scrolling row's fade. A 200 ms reveal runs only when entering the menu, and input finishes it immediately. The selected grid cube keeps its small 120 ms settling response.
+
+The large cube makes a single quiet nod after 11 seconds of inactivity. It dips five degrees over 400 ms and eases back over 800 ms, so it reads distinctly from the idle bob. C-stick input cancels decorative rotation immediately. Reaching a boundary gives one short bump and native error sound, including when reached through held navigation; holding against that edge stays quiet. Launch alignment runs during the existing transition and adds no boot delay.
 
 `make test` runs the host-side title-layout, menu-input, IPL input-hook, and menu-motion regression tests without launching Dolphin. New motion is checked at both 50 and 60 Hz; real SD access and boot behavior still require a hardware smoke test.
 

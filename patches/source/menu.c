@@ -627,75 +627,51 @@ __attribute_used__ void custom_gameselect_menu(u8 broken_alpha_0, u8 alpha_1, u8
     u8 ui_alpha = alpha_1;
     // u8 ui_alpha = alpha_2; // correct with animation
 
-    // icons
-    for (int pass = 0; pass < 2; pass++) {
-        for (int line_num = 0; line_num < number_of_lines; line_num++) {
-            line_backing_t *line_backing = &browser_lines[line_num];
-            f32 line_visibility = line_backing->transparency;
+    // Grid motion belongs to the grid. Keep each draw's transform local so the
+    // selected preview never inherits a row's movement or visibility fade.
+    for (int line_num = 0; line_num < number_of_lines; line_num++) {
+        line_backing_t *line_backing = &browser_lines[line_num];
+        f32 line_visibility = line_backing->transparency;
+        if (line_visibility <= 0 || line_backing->raw_position_y < 0 ||
+            line_backing->raw_position_y >= SCREEN_BOUND_TOTAL_Y) continue;
 
-            if (line_visibility > 0 && line_backing->raw_position_y >= 0 && line_backing->raw_position_y < SCREEN_BOUND_TOTAL_Y) {
-                f32 real_position_y = SCREEN_BOUND_TOP - line_backing->raw_position_y;
-                // OSReport("line %d: %f\n", line_num, real_position_y);
-                for (int col = 0; col < GRID_COLUMN_COUNT; col++) {
-                    int slot_num = (line_num * GRID_COLUMN_COUNT) + col;
-
-                    // bool has_texture = (slot_num < game_backing_count);
-                    bool selected = slot_num == selected_slot && slot_num < game_backing_count;
-                    bool hero = selected && pass == 1;
-
-                    if (!selected && pass == 1) continue;
-
-                    position_t *pos = &icons_positions[col];
-                    f32 saved_x = pos->m[0][3];
-
-                    // modify
-                    pos->opacity = line_visibility;
-                    if (hero) {
-                        f32 pull = menu_motion.pull;
-                        pos->scale = GRID_ICON_SCALE + ((HERO_ICON_SCALE - GRID_ICON_SCALE) * pull);
-
-                        // C-stick tilt is relative to the normal IPL-style pose.
-                        // The same matrix carries the cube and its inset artwork;
-                        // the grid copy and stationary details remain untouched.
-                        f32 pitch = menu_motion.launching ? launch_pitch : menu_input.pitch + menu_motion.hero_pitch;
-                        f32 yaw = menu_motion.launching ? launch_yaw : menu_input.yaw + menu_motion.hero_yaw;
-                        f32 pose = pull * (1.0f - menu_motion.launch_blend);
-                        apply_save_rot(
-                            (s32)((520.0f + pitch) * pose),
-                            (s32)((-1850.0f + yaw) * pose),
-                            0,
-                            pos->m
-                        );
-
-                        pos->m[0][3] = saved_x + ((HERO_POSITION_X - saved_x) * pull) + (menu_motion.bob_x * pose);
-                        pos->m[1][3] = real_position_y + ((HERO_POSITION_Y - real_position_y) * pull) - (menu_motion.bob_y * pose);
-                        pos->m[2][3] = 1.0f + ((HERO_POSITION_Z - 1.0f) * pull);
-                    } else {
-                        pos->scale = selected ? GRID_SELECTED_SCALE * menu_motion.selected_scale : GRID_ICON_SCALE;
-                        pos->opacity *= selected ? GRID_SELECTED_GHOST_OPACITY : GRID_ICON_OPACITY;
-                        pos->m[1][3] = real_position_y;
-                        if (selected) {
-                            pos->m[0][3] += menu_motion.bump_x;
-                            pos->m[1][3] += menu_motion.bump_y;
-                        }
-                    }
-                    draw_save_icon(pos, slot_num, alpha_1, selected);
-                    if (selected && !hero)
-                        draw_selection_corners(pos, alpha_1, line_visibility);
-
-                    C_MTXIdentity(pos->m);
-                    pos->m[0][3] = saved_x; // reset x
-                    pos->m[1][3] = 0.0; // reset y
-                    pos->m[2][3] = 1.0; // reset z
-                }
+        f32 real_position_y = SCREEN_BOUND_TOP - line_backing->raw_position_y;
+        for (int col = 0; col < GRID_COLUMN_COUNT; col++) {
+            int slot_num = (line_num * GRID_COLUMN_COUNT) + col;
+            bool selected = slot_num == selected_slot && slot_num < game_backing_count;
+            position_t pos = icons_positions[col];
+            pos.scale = selected ? GRID_SELECTED_SCALE * menu_motion.selected_scale : GRID_ICON_SCALE;
+            pos.opacity = line_visibility * (selected ? GRID_SELECTED_GHOST_OPACITY : GRID_ICON_OPACITY);
+            pos.m[1][3] = real_position_y;
+            if (selected) {
+                pos.m[0][3] += menu_motion.bump_x;
+                pos.m[1][3] += menu_motion.bump_y;
             }
+            draw_save_icon(&pos, slot_num, alpha_1, selected);
+            if (selected) draw_selection_corners(&pos, alpha_1, line_visibility);
         }
+    }
+
+    gm_file_entry_t *entry = gm_get_game_entry(selected_slot);
+    if (entry != NULL && selected_slot >= 0 && selected_slot < game_backing_count) {
+        // One persistent full-size preview: navigation changes its artwork in
+        // place, rather than relaunching a cube across the screen every time.
+        position_t hero = {.scale = HERO_ICON_SCALE, .opacity = menu_motion.pull};
+        f32 pitch = menu_motion.launching ? launch_pitch : menu_input.pitch + menu_motion.hero_pitch;
+        f32 yaw = menu_motion.launching ? launch_yaw : menu_input.yaw + menu_motion.hero_yaw;
+        f32 pose = 1.0f - menu_motion.launch_blend;
+        C_MTXIdentity(hero.m);
+        apply_save_rot((s32)((520.0f + pitch) * pose),
+                       (s32)((-1850.0f + yaw) * pose), 0, hero.m);
+        hero.m[0][3] = HERO_POSITION_X + menu_motion.bob_x * pose;
+        hero.m[1][3] = HERO_POSITION_Y - menu_motion.bob_y * pose;
+        hero.m[2][3] = HERO_POSITION_Z;
+        draw_save_icon(&hero, selected_slot, alpha_1, true);
     }
 
     // Restore the normal view before drawing the selected cube's face UI.
     fix_gameselect_view();
 
-    gm_file_entry_t *entry = gm_get_game_entry(selected_slot);
     if (entry != NULL && selected_slot < game_backing_count) {
         if (entry->extra.game_id[3] == 'J') switch_lang_jpn();
         else switch_lang_eng();

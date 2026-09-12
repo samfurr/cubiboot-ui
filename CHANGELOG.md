@@ -5,10 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Older entries below are inherited cubeboot history, not current installation instructions.
 
-## Unreleased
+## [v0.3.0-ui.2](https://github.com/samfurr/cubiboot-ui/releases/tag/v0.3.0-ui.2) - 2026-09-12
 
+- Packaged as a prerelease pending hardware confirmation of this build; the previous v0.3.0-ui.1 hardware smoke test does not validate the new input hook or motion.
+- Kept the large preview anchored while browsing, replacing repeated cross-screen cube flights with immediate artwork updates and a one-time entrance reveal. Scrolling rows no longer control preview visibility.
 - Polished the native cube cabinet with warm-yellow selection corners, cooler violet materials, brighter unselected banners, and more left-edge breathing room.
-- Added a short selection settle/arrival gesture, one quiet idle nod after 11 seconds, and a small directional bump when navigation first reaches an edge; held input no longer repeats the edge sound.
+- Added a short grid-selection settle, one quiet idle nod after 11 seconds, and a small directional bump when navigation first reaches an edge; held input no longer repeats the edge sound.
 - Made the idle nod easier to see: a five-degree dip over 400 ms, followed by an 800 ms return, still once per idle period.
 - C-stick inspection immediately takes over decorative rotation. Launch alignment overlaps the existing transition, and the stationary title panel updates without fading on every selection.
 - Added time-based motion and boundary-feedback regression tests, including 50/60 Hz behavior and interrupted animations.

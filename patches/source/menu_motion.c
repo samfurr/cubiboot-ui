@@ -103,12 +103,19 @@ void menu_motion_update(menu_motion_t *motion, float elapsed_ms, int selected_sl
     }
 
     elapsed_ms = bounded_time(elapsed_ms);
-    bool new_selection = !motion->active || selected_slot != motion->selected_slot;
+    bool selection_changed = selected_slot != motion->selected_slot;
+    bool new_selection = !motion->active || selection_changed;
+    // Entrance choreography yields to interaction. Thereafter the preview stays
+    // revealed while navigation only gives the selected small tile a pulse.
+    if (motion->active && (selection_changed || user_activity || inspecting) &&
+        motion->entry_ms < MENU_MOTION_ARRIVAL_MS) {
+        motion->entry_ms = MENU_MOTION_ARRIVAL_MS;
+        motion->arrival_suppressed = true;
+    }
     motion->active = true;
     if (new_selection) {
         motion->selected_slot = selected_slot;
         motion->arrival_ms = 0.0f;
-        motion->arrival_suppressed = false;
         motion->bump_ms = MENU_MOTION_BUMP_MS;
         motion->launching = false;
         motion->launch_ms = 0.0f;
@@ -117,16 +124,17 @@ void menu_motion_update(menu_motion_t *motion, float elapsed_ms, int selected_sl
         user_activity = true;
     }
 
-    motion->arrival_ms = advance(motion->arrival_ms, elapsed_ms, MENU_MOTION_ARRIVAL_MS);
-    float remaining = 1.0f - motion->arrival_ms / MENU_MOTION_ARRIVAL_MS;
+    motion->entry_ms = advance(motion->entry_ms, elapsed_ms, MENU_MOTION_ARRIVAL_MS);
+    float remaining = 1.0f - motion->entry_ms / MENU_MOTION_ARRIVAL_MS;
     motion->pull = 1.0f - remaining * remaining * remaining;
+    motion->arrival_ms = advance(motion->arrival_ms, elapsed_ms, MENU_MOTION_ARRIVAL_MS);
     float settle_phase = motion->arrival_ms / MENU_MOTION_SETTLE_MS;
     motion->selected_scale = settle_phase < 1.0f ?
         1.0f + (MENU_MOTION_MAX_SCALE - 1.0f) * pulse(settle_phase) : 1.0f;
 
     if (inspecting) motion->arrival_suppressed = true;
     motion->hero_yaw = motion->arrival_suppressed ? 0.0f :
-        MENU_MOTION_ARRIVAL_YAW * pulse(motion->arrival_ms / MENU_MOTION_ARRIVAL_MS);
+        MENU_MOTION_ARRIVAL_YAW * pulse(motion->entry_ms / MENU_MOTION_ARRIVAL_MS);
 
     update_idle(motion, elapsed_ms, user_activity, inspecting);
     motion->hero_pitch = motion->idle_pitch;

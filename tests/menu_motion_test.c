@@ -25,6 +25,10 @@ static void check_bounds(const menu_motion_t *motion) {
            MENU_MOTION_BUMP_DISTANCE * MENU_MOTION_BUMP_DISTANCE + 0.0001f);
     assert(isfinite(motion->launch_blend) && motion->launch_blend >= 0.0f &&
            motion->launch_blend <= 1.0f);
+    assert(isfinite(motion->entry_ms) && motion->entry_ms >= 0.0f &&
+           motion->entry_ms <= MENU_MOTION_ARRIVAL_MS);
+    assert(isfinite(motion->arrival_ms) && motion->arrival_ms >= 0.0f &&
+           motion->arrival_ms <= MENU_MOTION_ARRIVAL_MS);
 }
 
 static void frames(menu_motion_t *motion, int count, float elapsed_ms) {
@@ -48,6 +52,66 @@ static void idle_peak(menu_motion_t *motion, float frame_ms) {
     advance_ms(motion, MENU_MOTION_IDLE_DELAY_MS + MENU_MOTION_IDLE_DIP_MS, frame_ms);
     assert(motion->idle_nodded);
     close_to(motion->hero_pitch, MENU_MOTION_IDLE_PITCH, 0.1f);
+}
+
+static void test_entry_continuity(int hz) {
+    const float frame_ms = 1000.0f / hz;
+    menu_motion_t motion;
+    menu_motion_reset(&motion, 0);
+    menu_motion_update(&motion, 0.0f, 0, true, false, false);
+    advance_ms(&motion, MENU_MOTION_ARRIVAL_MS * 0.4f, frame_ms);
+    assert(motion.pull > 0.0f && motion.pull < 1.0f && motion.hero_yaw > 0.0f);
+
+    // A new selection immediately completes an interrupted entrance instead of
+    // restarting a flight from a different tile. Bob phase remains continuous.
+    float bob_phase = motion.bob_phase_ms;
+    menu_motion_update(&motion, 0.0f, 1, true, true, false);
+    assert(motion.selected_slot == 1 && motion.pull == 1.0f && motion.hero_yaw == 0.0f);
+    assert(motion.entry_ms == MENU_MOTION_ARRIVAL_MS && motion.arrival_ms == 0.0f);
+    assert(motion.bob_phase_ms == bob_phase && motion.idle_ms == 0.0f);
+    advance_ms(&motion, MENU_MOTION_SETTLE_MS / 2.0f, frame_ms);
+    close_to(motion.selected_scale, MENU_MOTION_MAX_SCALE, 0.0001f);
+    assert(motion.pull == 1.0f && motion.hero_yaw == 0.0f);
+
+    // Real hold repeats change selection every100ms. Their independent tile
+    // pulses must never shrink, hide, or re-rotate the anchored hero preview.
+    for (int frame = 0; frame < hz * 2; frame++) {
+        int slot = 2 + frame / (hz / 10);
+        float previous_bob_phase = motion.bob_phase_ms;
+        menu_motion_update(&motion, frame_ms, slot, true, true, false);
+        check_bounds(&motion);
+        assert(motion.selected_slot == slot);
+        assert(motion.entry_ms == MENU_MOTION_ARRIVAL_MS && motion.pull == 1.0f);
+        assert(motion.hero_yaw == 0.0f && motion.bob_phase_ms > previous_bob_phase);
+    }
+    menu_motion_update(&motion, 0.0f, 100, true, true, false);
+    assert(motion.pull == 1.0f && motion.hero_yaw == 0.0f);
+
+    menu_motion_bump(&motion, 1, 0);
+    frames(&motion, 1, frame_ms);
+    assert(motion.bump_x > 0.0f && motion.pull == 1.0f);
+    menu_motion_update(&motion, frame_ms, 100, true, true, true);
+    assert(motion.pull == 1.0f && motion.hero_pitch == 0.0f && motion.hero_yaw == 0.0f);
+
+    // Leaving the menu rearms its one-time reveal. Ordinary input while an
+    // entrance is running also finishes it, without waiting for a slot change.
+    menu_motion_update(&motion, frame_ms, 100, false, false, false);
+    assert(!motion.active && motion.entry_ms == 0.0f && motion.pull == 0.0f);
+    menu_motion_update(&motion, 0.0f, 100, true, false, false);
+    advance_ms(&motion, MENU_MOTION_ARRIVAL_MS / 2.0f, frame_ms);
+    assert(motion.pull > 0.0f && motion.pull < 1.0f && motion.hero_yaw > 0.0f);
+    menu_motion_update(&motion, 0.0f, 100, true, true, false);
+    assert(motion.pull == 1.0f && motion.hero_yaw == 0.0f);
+    frames(&motion, 1, frame_ms);
+    assert(motion.pull == 1.0f && motion.hero_yaw == 0.0f);
+
+    menu_motion_reset(&motion, 100);
+    menu_motion_update(&motion, 0.0f, 100, true, false, false);
+    advance_ms(&motion, MENU_MOTION_ARRIVAL_MS / 2.0f, frame_ms);
+    menu_motion_update(&motion, 0.0f, 100, true, false, true);
+    assert(motion.pull == 1.0f && motion.hero_yaw == 0.0f);
+    frames(&motion, 1, frame_ms);
+    assert(motion.pull == 1.0f && motion.hero_yaw == 0.0f);
 }
 
 static void test_idle_rate(int hz) {
@@ -138,12 +202,12 @@ int main(void) {
     menu_motion_update(&motion, 40.0f, 4, true, false, false);
     close_to(motion.hero_yaw, MENU_MOTION_ARRIVAL_YAW, 0.0001f);
 
-    // Rapid selections restart rather than queue. C-stick input wins immediately
-    // and releasing it never brings the canceled arrival gesture back.
+    // Selection restarts only the small-tile pulse, never the hero reveal/yaw.
+    // Inspection keeps decorative rotation canceled across further selections.
     menu_motion_update(&motion, 0.0f, 5, true, true, false);
-    assert(motion.pull == 0.0f && motion.hero_yaw == 0.0f);
+    assert(motion.pull == 1.0f && motion.hero_yaw == 0.0f);
     menu_motion_update(&motion, 30.0f, 5, true, false, false);
-    assert(motion.hero_yaw > 0.0f);
+    assert(motion.selected_scale > 1.0f && motion.hero_yaw == 0.0f);
     menu_motion_update(&motion, 0.0f, 5, true, true, true);
     assert(motion.hero_pitch == 0.0f && motion.hero_yaw == 0.0f);
     frames(&motion, 2, 30.0f);
@@ -151,7 +215,9 @@ int main(void) {
     menu_motion_update(&motion, 30.0f, 6, true, true, true);
     assert(motion.hero_yaw == 0.0f);
     menu_motion_update(&motion, 30.0f, 7, true, true, false);
-    assert(motion.hero_yaw > 0.0f);
+    assert(motion.pull == 1.0f && motion.hero_yaw == 0.0f);
+    test_entry_continuity(50);
+    test_entry_continuity(60);
 
     // Idle curiosity is one nod per quiet interval, not a loop.
     menu_motion_reset(&motion, 0);

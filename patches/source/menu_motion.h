@@ -22,7 +22,7 @@
 typedef struct {
     // Rendering outputs. Angles use IPL's 16-bit turn units; offsets use the
     // same world units as the cube transform. Keep text outside this transform.
-    float pull;
+    float pull; // One-time hero reveal, never a per-selection position/scale.
     float selected_scale;
     float hero_pitch, hero_yaw;
     float bob_x, bob_y;
@@ -35,7 +35,8 @@ typedef struct {
     bool arrival_suppressed;
     bool idle_nodded;
     bool launching;
-    float arrival_ms;
+    float entry_ms; // Advances once per menu entry; input can finish it early.
+    float arrival_ms; // Restarts only the small selected tile's settling pulse.
     float bob_phase_ms;
     float bump_ms;
     float bump_direction_x, bump_direction_y;
@@ -46,7 +47,8 @@ typedef struct {
     float launch_ms;
 } menu_motion_t;
 
-// A newly opened menu starts its selected cube's arrival on the next update.
+// A newly opened menu starts its hero reveal on the next update. Navigation
+// changes the displayed game immediately, without restarting this reveal.
 void menu_motion_reset(menu_motion_t *motion, int selected_slot);
 
 // Call exactly once per frame, after applying logical navigation. active means
