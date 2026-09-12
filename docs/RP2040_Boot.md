@@ -1,27 +1,40 @@
-# Booting from an RP2040 Pico
+# Updating Cubiboot on PicoLoader
 
-This guide describes how to install cubeboot as a built-in firmware for the pico.
-This includes PicoBoot devices installed on the IPL.
+This guide is for an **existing PicoLoader installation**. A Pico appearing as a
+USB drive in BOOTSEL mode does not by itself identify which GameCube mod is installed.
+PicoBoot and PicoLoader have different wiring and incompatible firmware.
 
-## Install
+Our `cubiboot_picoloader.uf2` is a payload-only update, matching upstream
+Cubiboot's update format. It keeps the installed PicoLoader firmware. It is not
+for a blank Pico or a Pico wired for PicoBoot; for PicoBoot/gekkoboot, use the
+[SD installation](SD_Boot.md) instead.
 
-Download the most recent `cubeboot.uf2` firmware file from the GitHub releases 
-page. Optionally desolder the VCC wire from your pico to avoid over-voltage on 
-your GameCube while flashing (if you have a diode installed on VCC you can skip
-this step).
+## Flash the update
 
-Hold `BOOTSEL` while plugging your pico into your computer. This cause a Drive 
-to appear on the computer. Copy the `cubeboot.uf2` to the drive and wait until 
-it disappears. The firmware has been successfully updated.
+1. Download `cubiboot_picoloader.uf2` from [this fork's latest release](https://github.com/samfurr/cubiboot-ui/releases/latest). Keep your previous working UF2 for rollback.
+2. Turn the GameCube **off**. Before connecting USB, confirm the installation follows the [official PicoLoader hardware guide](https://github.com/makeo/PicoLoader/wiki/2.1.-Normal-Installation), including power-isolation/diode wiring. Do not guess for a custom or unknown installation.
+3. Hold **BOOTSEL** while connecting a USB data cable to your computer. Release the button after the USB drive appears (`RPI-RP2` on RP2040, `RP2350` on RP2350).
+4. Copy the new UF2 to that drive. Wait until the copy completes and the drive disappears automatically.
+5. Disconnect USB, then power on the GameCube.
 
-If you desoldered VCC you should resolder it now before booting your GameCube again.
+No flash-nuke, full erase, or SD formatting is needed. Do not rename a `.dol` to
+`.uf2`: they are different formats. Follow the [official software setup](https://github.com/makeo/PicoLoader/wiki/3.-Software-Installation)
+to install PicoLoader firmware first if the board is blank.
 
-Make sure to download a copy of `cubeboot.ini` and copy it to your SD Card. This
-settings file allows you to customize aspects of the boot process.
+## SD files
 
-You no longer need an `IPL.dol` file on your SD Card after installing cubeboot as
-firmware.
+Keep `swiss-gc.dol` at the SD root. Cubiboot needs Swiss to launch games and
+programs; the menu displays that file as **Settings**, with a gear icon, last
+in the list. Your games and optional [`config.ini`](settings.md) stay on the SD.
+This embedded-payload route does not require an `ipl.dol` on the card.
 
-## Issues
+## Verification and rollback
 
-TBD
+The maintainer reports successful operation on a real GameCube with PicoLoader.
+Check your own grid, long titles, Settings/Swiss, and game launching after updating;
+that report is not an exhaustive console/adapter/reset compatibility test.
+
+If the update fails, turn the GameCube off and repeat the BOOTSEL copy procedure
+with your previous known-working Cubiboot PicoLoader UF2. Keep installed firmware
+and SD contents intact. For an SD-loaded setup, restore the backed-up `ipl.dol`
+instead; do not flash this UF2 to a PicoBoot installation.

@@ -1,3 +1,9 @@
+> [!WARNING]
+> Documentación histórica de cubeboot; no es una guía de instalación para Cubiboot UI.
+> Consulte las [instrucciones actuales](../README.md). Esta versión usa `config.ini`
+> y `swiss-gc.dol`; su UF2 es solo para PicoLoader, no para PicoBoot.
+> No siga los pasos de flasheo ni los nombres de archivos antiguos que aparecen abajo.
+
 ﻿Flippyboot IPL
 Este proyecto es un framework de parcheo para el GameCube IPL, llamado BS2. El proyecto originalmente estaba destinado a restaurar la animación de arranque en Flippyboot. Ahora el proyecto se ha generalizado y funciona tanto en Flippyboot como en PicoBoot.
 cubeboot actúa como un arnés de parcheo para BS2 y es capaz de montar dispositivos FAT externos y cargar una cadena DOL. El BS1 y Font ROM con derechos de autor no se proporcionan ni son necesarios con Flippyboot, ya que estos residen en la U10 ROM del GameCube.

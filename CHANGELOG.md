@@ -2,8 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+Older entries below are inherited cubeboot history, not current installation instructions.
+
+## [v0.3.0-ui.1](https://github.com/samfurr/cubiboot-ui/releases/tag/v0.3.0-ui.1) - 2026-09-11
+
+- Added an isolated Dolphin mock-data preview for UI development.
+- Redesigned selection as a scrolling grid with a large independently bobbing cube and stationary details panel.
+- Preserved wide game-banner proportions and tuned small/large cube padding.
+- Added width-aware title wrapping, size reduction, and safe truncation.
+- Displayed Swiss as Settings with a gear icon, sorted after all other entries.
+- Published clean hardware DOL and payload-only PicoLoader UF2 builds with checksums and packaging tools.
+- Promoted after the maintainer confirmed operation on a real GameCube with PicoLoader; this is a smoke test, not an exhaustive compatibility matrix.
+- Updated installation/configuration documentation for this fork, including `config.ini`, `swiss-gc.dol`, and the PicoLoader/PicoBoot distinction.
 
 ## [0.1.4] - Boot Held Button Programs
 

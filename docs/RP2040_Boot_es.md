@@ -1,3 +1,9 @@
+> [!WARNING]
+> Documentación histórica de cubeboot; no es una guía de instalación para Cubiboot UI.
+> Consulte las [instrucciones actuales](RP2040_Boot.md). Esta versión usa `config.ini`
+> y `swiss-gc.dol`; su UF2 es solo para PicoLoader, no para PicoBoot.
+> No siga los pasos de flasheo ni los nombres de archivos antiguos que aparecen abajo.
+
 ﻿# Arrancando desde un RP2040 Pico
 Esta guía describe cómo instalar cubeboot como un firmware integrado para el pico. Esto incluye los dispositivos PicoBoot instalados en el IPL.
 

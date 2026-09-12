@@ -1,3 +1,9 @@
+> [!WARNING]
+> Documentación histórica de cubeboot; no es una guía de instalación para Cubiboot UI.
+> Consulte las [instrucciones actuales](SD_Boot.md). Esta versión usa `config.ini`
+> y `swiss-gc.dol`; su UF2 es solo para PicoLoader, no para PicoBoot.
+> No siga los pasos de flasheo ni los nombres de archivos antiguos que aparecen abajo.
+
 ﻿# Arrancando desde una SD
 
 Esta guía describe cómo puedes usar cubeboot en un sistema con iplboot instalado como programa inicial. Esto incluye dispositivos PicoBoot con firmware de fábrica, así como dispositivos Viper y Qoob con iplboot instalado en su memoria flash interna.

@@ -1,12 +1,53 @@
-# cubiboot
+# Cubiboot UI
 
-This is a fork of [cubeboot](https://github.com/OffBroadway/cubeboot) by [TeamOffBroadway](https://github.com/OffBroadway) with support for SD2SP2, SD Gecko or similar SD adapters.
+A GameCube-style game selector built on [makeo/cubiboot](https://github.com/makeo/cubiboot), itself a fork of [TeamOffBroadway's cubeboot](https://github.com/OffBroadway/cubeboot). Browse games from SD2SP2, SD Gecko, or similar SD adapters in a scrolling cube grid, with a large selected-game preview and readable banners and titles.
 
-If you have questions regarding this fork you can join the [Discord server](https://discord.gg/YtA9aU3BKZ)!
+- Four-column scrolling grid, a bobbing selected-game cube, and a stationary details panel.
+- Wide GameCube banners keep their aspect ratio; long titles wrap and fit the panel.
+- Swiss appears as **Settings**, with a gear icon, and always sorts last.
+- Original IPL background and native Back prompt.
+- Isolated Dolphin preview for visual development without reflashing hardware.
 
-> [!IMPORTANT]
-> Format your SD card using exFat (Not FAT32).\
-> Currently loading of files is very slow when using FAT32 formatted SD cards.
+## Downloads
+
+Get the [latest release](https://github.com/samfurr/cubiboot-ui/releases/latest), including checksums and build information.
+
+| Your installation | File | Where it goes |
+| --- | --- | --- |
+| Existing PicoLoader, with Cubiboot stored on the Pico | [`cubiboot_picoloader.uf2`](https://github.com/samfurr/cubiboot-ui/releases/latest/download/cubiboot_picoloader.uf2) | Pico USB drive in BOOTSEL mode |
+| PicoBoot or PicoLoader using gekkoboot/iplboot to load `ipl.dol` from SD | [`cubiboot.dol`](https://github.com/samfurr/cubiboot-ui/releases/latest/download/cubiboot.dol) | SD root, renamed to `ipl.dol` |
+
+> [!WARNING]
+> PicoLoader and PicoBoot are different installations; their UF2 files are not interchangeable. Our UF2 is a **PicoLoader payload-only update**: it preserves existing PicoLoader firmware and will not set up a blank board. This fork does not provide a PicoBoot UF2.
+
+The maintainer has confirmed this release works on a real GameCube with PicoLoader. That is a hardware smoke test, not a compatibility guarantee for every console, SD adapter, or launch/reset path.
+
+### Update an existing PicoLoader
+
+1. Keep your previous working UF2 and back up your SD configuration.
+2. Turn the GameCube **off**. Verify the installation's power-isolation/diode wiring before connecting USB; follow the [official hardware guide](https://github.com/makeo/PicoLoader/wiki/2.1.-Normal-Installation) for an unknown or custom installation.
+3. Hold **BOOTSEL** while connecting the Pico to your computer. Release it when the USB drive appears.
+4. Copy `cubiboot_picoloader.uf2` onto that drive and wait for the drive to disappear automatically.
+5. Disconnect USB, then power on the GameCube.
+
+Keep [Swiss](https://github.com/emukidid/swiss-gc/releases/latest) on your SD root as `swiss-gc.dol`; it is required for game/program launching and appears as **Settings**. Existing games and configuration stay in place. Do not erase the Pico or use a flash-nuke UF2 for this update.
+
+See the [flashing and rollback guide](docs/RP2040_Boot.md). First-time PicoLoader installations need the [official firmware setup](https://github.com/makeo/PicoLoader/wiki/3.-Software-Installation) before our payload.
+
+### Install through SD / gekkoboot
+
+1. Back up the SD card's existing `ipl.dol` to your computer.
+2. Download `cubiboot.dol`, rename it to `ipl.dol`, and copy it to the SD root.
+3. Put the Swiss DOL at the SD root as `swiss-gc.dol`.
+4. Safely eject the card, return it to the GameCube, and power on.
+
+This route does not require reflashing the Pico. See the [SD boot guide](docs/SD_Boot.md).
+
+### Configuration and storage
+
+The optional settings file is **`config.ini` at the SD root**, with a `[cubeboot]` section; see [configuration](docs/settings.md). A configuration file is not required for the default menu. The Settings gear launches Swiss; it is not an editor for this file.
+
+No SD reformatting is required to update. The upstream fork reports slow FAT32 enumeration and recommends exFAT when preparing a card; back up its contents before changing filesystems. Nintendo IPL dumps, games, and Swiss are not included in our downloads.
 
 ## Local Dolphin UI preview
 
@@ -53,49 +94,45 @@ Dolphin's default keyboard controls use the arrow keys for the main stick, `X` f
 
 The details panel fits titles using the IPL font's glyph widths: one line for short names, two balanced lines for longer ones, then a small size reduction and an ellipsis only when necessary. `make test` runs the host-side title-layout regression tests without launching Dolphin.
 
-Preview builds are cleaned first so their conditional objects cannot leak into a hardware build. For a production build, continue to use the CI-style clean build:
+### Build for hardware
+
+Do not flash or install the output of `make preview`. After the dependencies above are installed, build from the repository root with a clean, non-preview configuration:
 
 ```sh
+export DEVKITPRO=/opt/devkitpro
+export DEVKITPPC="$DEVKITPRO/devkitPPC"
+make preview-python-deps
+export PATH="$PWD/.venv/bin:$PATH"
+mkdir -p .cache/go-build
+export GOCACHE="$PWD/.cache/go-build"
+make test
 make -C entry clean
-make -C entry
+make -C entry DOLPHIN_PREVIEW=0
 ```
 
-## Installation - [PicoLoader](https://github.com/makeo/PicoLoader)
-1. Download the [```cubiboot_picoloader.uf2```](https://github.com/makeo/cubiboot/releases/latest/download/cubiboot_picoloader.uf2) file
-2. Hold down the button on the RP Pico whilst plugging it into your PC
-3. Copy the .uf2 file to the USB drive
-4. Download the [latest Swiss](https://github.com/emukidid/swiss-gc/releases/latest) dol
-5. Rename the Swiss dol to ```swiss-gc.dol``` and place it on your SD card
+The standalone output is `cubeboot/cubeboot.dol`, published as `cubiboot.dol`. The compressed `entry/entry.dol` is a different artifact. UF2 packaging uses the pinned official PicoLoader converter supplied in the release's build-tools archive; see [release packaging](dist/README.md). Renaming a DOL to UF2 is not sufficient.
 
-## Installation - [PicoLoader](https://github.com/makeo/PicoLoader)/[PicoBoot](https://github.com/webhdx/PicoBoot) with gekkoboot payload
-1. Download the [```cubiboot.dol```](https://github.com/makeo/cubiboot/releases/latest/download/cubiboot.dol)
-2. Rename it to ```ipl.dol```
-3. Copy the ```ipl.dol``` onto your SD card
-4. Download the [latest Swiss](https://github.com/emukidid/swiss-gc/releases/latest) dol
-5. Rename the Swiss dol to ```swiss-gc.dol``` and place it on your SD card
+## Limitations and upstream extras
 
-## Using In-Game Reset
-1. Download [```EXTRACT_TO_ROOT.zip```](https://github.com/makeo/cubiboot/releases/latest/download/EXTRACT_TO_ROOT.zip)
-2. Extract the contents to the root of the SD card
-3. Pressing Z + A + START whilst in a game brings you back to the cubiboot menu
+- FAT32 enumeration remains slow.
+- The upstream `cube_logo` and `button_*` settings remain unsupported/broken; use gekkoboot for boot-button assignments.
+- We do not ship a PicoBoot UF2, an ODE ISO, or an in-game-reset package in this release.
+- Upstream's [v0.3 release](https://github.com/makeo/cubiboot/releases/tag/v0.3) has ISO/reset extras, but these have not been rebuilt or validated for this UI fork and may contain the upstream menu. Do not treat them as this release's UI assets.
+- The hardware smoke test does not establish compatibility across all IPL revisions or independently verify every game, Swiss launch, or in-game-reset combination.
 
-## Other ODEs (e.g. GC Loader)
-Download the [```cubiboot.iso```](https://github.com/makeo/cubiboot/releases/latest/download/cubiboot.iso) and use it as appropriate for your ODE.\
-Files and the config have to be stored on a separate SD2SP2, SD Gecko or similar SD adapter.\
-ODEs besides PicoLoader are not supported, and issues specific to these devices might not be fixed.
+## Support and history
 
-## Known Bugs
-- loading of files is very slow when using FAT32
-- cube_logo option does not work
-- button_* options to not work (use gekkoboot for this functionality instead)
-- no PicoBoot uf2
+Report issues for this UI fork in [this repository](https://github.com/samfurr/cubiboot-ui/issues). The [upstream Discord](https://discord.gg/YtA9aU3BKZ) is a separate community. See [CHANGELOG.md](CHANGELOG.md) for the UI release and inherited project history.
 
 ## Special Thanks
+
+- [makeo](https://github.com/makeo) for Cubiboot and PicoLoader.
 - [TeamOffBroadway](https://github.com/OffBroadway) for creating cubeboot
 - [Extrems](https://github.com/Extrems), [emukidid](https://github.com/emukidid) and everyone involved in creating Swiss
 
 ## Acknowledgements
+
 - [cubeboot](https://github.com/OffBroadway/cubeboot) (GPL-2.0)
 - [apploader](https://github.com/makeo/cubeboot-tools) (GPL-2.0)
 - [packer](https://github.com/emukidid/swiss-gc/tree/master/cube/packer) for apploader.img (GPL-2.0)
-- For more, see [CREDIT.md](https://github.com/makeo/cubiboot/blob/main/CREDIT.md)
+- For more, see [CREDIT.md](CREDIT.md).

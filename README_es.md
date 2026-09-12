@@ -1,3 +1,9 @@
+> [!WARNING]
+> Documentación histórica de cubeboot; no es una guía de instalación para Cubiboot UI.
+> Consulte las [instrucciones actuales](README.md). Esta versión usa `config.ini`
+> y `swiss-gc.dol`; su UF2 es solo para PicoLoader, no para PicoBoot.
+> No siga los pasos de flasheo ni los nombres de archivos antiguos que aparecen abajo.
+
 ﻿Flippyboot IPL
 Este proyecto es un framework de parcheo para el GameCube IPL, llamado BS2. El proyecto originalmente estaba destinado a restaurar la animación de arranque en Flippyboot. Ahora el proyecto se ha generalizado y funciona tanto en Flippyboot como en PicoBoot.
 
