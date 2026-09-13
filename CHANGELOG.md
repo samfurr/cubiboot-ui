@@ -7,7 +7,8 @@ Older entries below are inherited cubeboot history, not current installation ins
 
 ## [v0.3.0-ui.2](https://github.com/samfurr/cubiboot-ui/releases/tag/v0.3.0-ui.2) - 2026-09-12
 
-- Packaged as a prerelease pending hardware confirmation of this build; the previous v0.3.0-ui.1 hardware smoke test does not validate the new input hook or motion.
+- Promoted to the latest stable release after the maintainer confirmed this build works on a real GameCube with PicoLoader. The tested prerelease DOL/UF2 and source tag are unchanged; this is a hardware smoke test, not an exhaustive compatibility matrix.
+- Added current Dolphin screenshots to the README, clearly labeled as using placeholder banners.
 - Kept the large preview anchored while browsing, replacing repeated cross-screen cube flights with immediate artwork updates and a one-time entrance reveal. Scrolling rows no longer control preview visibility.
 - Polished the native cube cabinet with warm-yellow selection corners, cooler violet materials, brighter unselected banners, and more left-edge breathing room.
 - Added a short grid-selection settle, one quiet idle nod after 11 seconds, and a small directional bump when navigation first reaches an edge; held input no longer repeats the edge sound.

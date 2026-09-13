@@ -10,9 +10,17 @@ A GameCube-style game selector built on [makeo/cubiboot](https://github.com/make
 - Original IPL background and native Back prompt.
 - Isolated Dolphin preview for visual development without reflashing hardware.
 
+## Screenshots
+
+Captured in Dolphin from the v0.3.0-ui.2 interface, using synthetic placeholder banners. On hardware, games display their own banner artwork.
+
+| Browsing the game grid | C-stick inspection |
+| --- | --- |
+| ![Game grid with yellow selection corners, a large selected-game cube, and stationary details](docs/screenshots/menu-grid.png) | ![The C-stick tilts the large cube while the game selection and details remain in place](docs/screenshots/c-stick-inspection.png) |
+
 ## Downloads
 
-The current UI build is [v0.3.0-ui.2](https://github.com/samfurr/cubiboot-ui/releases/tag/v0.3.0-ui.2), initially a prerelease pending a real-GameCube smoke test. Its downloads below include checksums and build information. The previous hardware-tested [v0.3.0-ui.1](https://github.com/samfurr/cubiboot-ui/releases/tag/v0.3.0-ui.1) remains available for rollback.
+The latest stable release is [v0.3.0-ui.2](https://github.com/samfurr/cubiboot-ui/releases/tag/v0.3.0-ui.2), confirmed working on the maintainer's GameCube with PicoLoader. Its downloads below include checksums and build information. The previous [v0.3.0-ui.1](https://github.com/samfurr/cubiboot-ui/releases/tag/v0.3.0-ui.1) remains available for rollback.
 
 | Your installation | File | Where it goes |
 | --- | --- | --- |
@@ -22,7 +30,7 @@ The current UI build is [v0.3.0-ui.2](https://github.com/samfurr/cubiboot-ui/rel
 > [!WARNING]
 > PicoLoader and PicoBoot are different installations; their UF2 files are not interchangeable. Our UF2 is a **PicoLoader payload-only update**: it preserves existing PicoLoader firmware and will not set up a blank board. This fork does not provide a PicoBoot UF2.
 
-The maintainer confirmed **v0.3.0-ui.1** works on a real GameCube with PicoLoader. The new **v0.3.0-ui.2** interface has been exercised in Dolphin and its input/motion logic is covered by host regression tests; its hardware validation is still pending. Neither check guarantees compatibility with every console, SD adapter, IPL revision, or launch/reset path.
+The **v0.3.0-ui.2** hardware smoke test used the same DOL and UF2 originally published in the prerelease; the binaries were not rebuilt for promotion. The interface also has Dolphin and host regression coverage. Individual SD, game/Swiss launch, controller, and reset paths were not separately documented on hardware, so this is not a compatibility guarantee for every console, SD adapter, or IPL revision.
 
 ### Update an existing PicoLoader
 

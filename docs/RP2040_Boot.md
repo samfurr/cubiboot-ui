@@ -11,7 +11,7 @@ for a blank Pico or a Pico wired for PicoBoot; for PicoBoot/gekkoboot, use the
 
 ## Flash the update
 
-1. Download `cubiboot_picoloader.uf2` from [v0.3.0-ui.2](https://github.com/samfurr/cubiboot-ui/releases/tag/v0.3.0-ui.2), initially a prerelease pending hardware confirmation, or use the previous hardware-tested [v0.3.0-ui.1](https://github.com/samfurr/cubiboot-ui/releases/tag/v0.3.0-ui.1). Keep your previous working UF2 for rollback.
+1. Download `cubiboot_picoloader.uf2` from the latest stable [v0.3.0-ui.2](https://github.com/samfurr/cubiboot-ui/releases/tag/v0.3.0-ui.2). The previous [v0.3.0-ui.1](https://github.com/samfurr/cubiboot-ui/releases/tag/v0.3.0-ui.1) remains available; keep your previous working UF2 for rollback.
 2. Turn the GameCube **off**. Before connecting USB, confirm the installation follows the [official PicoLoader hardware guide](https://github.com/makeo/PicoLoader/wiki/2.1.-Normal-Installation), including power-isolation/diode wiring. Do not guess for a custom or unknown installation.
 3. Hold **BOOTSEL** while connecting a USB data cable to your computer. Release the button after the USB drive appears (`RPI-RP2` on RP2040, `RP2350` on RP2350).
 4. Copy the new UF2 to that drive. Wait until the copy completes and the drive disappears automatically.
@@ -30,12 +30,15 @@ This embedded-payload route does not require an `ipl.dol` on the card.
 
 ## Verification and rollback
 
-The maintainer reports successful operation of **v0.3.0-ui.1** on a real GameCube
-with PicoLoader. **v0.3.0-ui.2** has Dolphin UI and host regression coverage, but
-its real-hardware smoke test is still pending. Check navigation, C-stick tilt
-and recentering, long titles, Settings/Swiss, and game launching after updating.
-Also check scrolling if your library extends beyond the three visible rows.
-These checks are not an exhaustive console/adapter/IPL/reset compatibility test.
+The maintainer confirmed successful operation of **v0.3.0-ui.2** on a real
+GameCube with PicoLoader. Promotion keeps the exact prerelease DOL/UF2 and
+source tag unchanged. This is a smoke test; individual launch, scrolling,
+controller, and reset paths were not separately documented on hardware.
+
+Check navigation, C-stick tilt and recentering, long titles, Settings/Swiss,
+and game launching on your installation. Also check scrolling if your library
+extends beyond the three visible rows. Neither the hardware report nor the
+Dolphin/host tests establish exhaustive console/adapter/IPL/reset compatibility.
 
 If the update fails, turn the GameCube off and repeat the BOOTSEL copy procedure
 with your previous known-working Cubiboot PicoLoader UF2. Keep installed firmware
